@@ -1,5 +1,5 @@
-import { Ticker } from "@/ticker";
-import { Interval, OHLCVData, Period } from "@/types";
+import { Ticker } from "~/ticker";
+import { Interval, OHLCVData, Period } from "~/types";
 
 /**
  * Tickers class for managing multiple tickers

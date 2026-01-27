@@ -1,5 +1,4 @@
-import { getIsYatirimProvider } from "@/providers/isyatirim";
-
+import { getIsYatirimProvider } from "~/providers/isyatirim";
 import { resilientTest } from "../helpers/network-utils";
 
 describe("IsYatirimProvider", () => {

@@ -1,7 +1,8 @@
-import { APIError, DataNotAvailableError } from "@/exceptions";
-import { BaseProvider } from "@/providers/base";
-import { TTL } from "@/utils/helpers";
 import * as cheerio from "cheerio";
+
+import { APIError, DataNotAvailableError } from "~/exceptions";
+import { BaseProvider } from "~/providers/base";
+import { TTL } from "~/utils/helpers";
 
 export interface BondData {
   name: string;

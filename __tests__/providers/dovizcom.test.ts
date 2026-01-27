@@ -1,6 +1,5 @@
-import { APIError, DataNotAvailableError } from "@/exceptions";
-import { DovizcomProvider, getDovizcomProvider } from "@/providers/dovizcom";
-
+import { APIError, DataNotAvailableError } from "~/exceptions";
+import { DovizcomProvider, getDovizcomProvider } from "~/providers/dovizcom";
 import { resilientTest } from "../helpers/network-utils";
 
 describe("DovizcomProvider", () => {

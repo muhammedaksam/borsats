@@ -1,6 +1,7 @@
-import { APIError } from "@/exceptions";
-import { BaseProvider } from "@/providers/base";
 import * as cheerio from "cheerio";
+
+import { APIError } from "~/exceptions";
+import { BaseProvider } from "~/providers/base";
 
 export interface KAPCompany {
   ticker: string;

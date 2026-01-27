@@ -16,8 +16,8 @@ import {
   calculateVWAP,
   calculateWilliamsR,
   TechnicalAnalyzer,
-} from "@/technical";
-import { OHLCVData } from "@/types";
+} from "~/technical";
+import { OHLCVData } from "~/types";
 
 describe("Technical Analysis", () => {
   // Generate sample data: Upward trend

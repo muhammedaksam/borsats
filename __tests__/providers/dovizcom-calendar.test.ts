@@ -1,4 +1,4 @@
-import { getCalendarProvider } from "@/providers/dovizcom-calendar";
+import { getCalendarProvider } from "~/providers/dovizcom-calendar";
 
 describe("DovizcomCalendarProvider", () => {
   const provider = getCalendarProvider();

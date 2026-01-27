@@ -1,5 +1,4 @@
-import { BistIndexProvider } from "@/providers/bist-index";
-
+import { BistIndexProvider } from "~/providers/bist-index";
 import { resilientTest } from "../helpers/network-utils";
 
 describe("BistIndexProvider", () => {

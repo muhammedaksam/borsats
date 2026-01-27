@@ -1,5 +1,5 @@
-import { APIError } from "@/exceptions";
-import { BaseProvider } from "@/providers/base";
+import { APIError } from "~/exceptions";
+import { BaseProvider } from "~/providers/base";
 
 // TestProvider extends BaseProvider for testing purposes
 class TestProvider extends BaseProvider {

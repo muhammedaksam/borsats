@@ -1,10 +1,10 @@
-import { compareFunds, Fund, screenFunds, searchFunds } from "@/fund";
+import { compareFunds, Fund, screenFunds, searchFunds } from "~/fund";
 import {
   FundDetail,
   FundHistoryItem,
   getTEFASProvider,
   TEFASProvider,
-} from "@/providers/tefas";
+} from "~/providers/tefas";
 
 // Mock TEFAS
 class MockTEFAS extends TEFASProvider {
@@ -42,8 +42,8 @@ class MockTEFAS extends TEFASProvider {
 }
 
 // Overwrite singleton
-jest.mock("@/providers/tefas", () => {
-  const original = jest.requireActual("@/providers/tefas");
+jest.mock("~/providers/tefas", () => {
+  const original = jest.requireActual("~/providers/tefas");
   return {
     ...original,
     getTEFASProvider: jest.fn(),

@@ -1,5 +1,4 @@
-import { TCMB, policyRate as tcmbPolicyRate } from "@/tcmb";
-
+import { TCMB, policyRate as tcmbPolicyRate } from "~/tcmb";
 import { resilientTest } from "./helpers/network-utils";
 
 describe("TCMB Module", () => {

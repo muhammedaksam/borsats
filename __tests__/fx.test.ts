@@ -1,4 +1,4 @@
-import { banks, FX, metalInstitutions } from "@/fx";
+import { banks, FX, metalInstitutions } from "~/fx";
 
 describe("FX Module", () => {
   jest.setTimeout(60000);

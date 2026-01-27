@@ -1,4 +1,4 @@
-import { EconomicCalendar, economicCalendar } from "@/calendar";
+import { EconomicCalendar, economicCalendar } from "~/calendar";
 
 describe("Economic Calendar", () => {
   const cal = new EconomicCalendar();

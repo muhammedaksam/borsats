@@ -4,7 +4,7 @@ import {
   searchCrypto,
   searchForex,
   searchIndex,
-} from "@/search";
+} from "~/search";
 
 describe("Search Module", () => {
   jest.setTimeout(60000);

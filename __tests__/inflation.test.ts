@@ -1,4 +1,4 @@
-import { Inflation } from "@/inflation";
+import { Inflation } from "~/inflation";
 
 describe("Inflation Module", () => {
   jest.setTimeout(30000);

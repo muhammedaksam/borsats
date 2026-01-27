@@ -1,8 +1,8 @@
-import { Crypto } from "@/crypto";
-import { Fund } from "@/fund";
-import { FX } from "@/fx";
-import { Ticker } from "@/ticker";
-import { Holding, Period } from "@/types";
+import { Crypto } from "~/crypto";
+import { Fund } from "~/fund";
+import { FX } from "~/fx";
+import { Ticker } from "~/ticker";
+import { Holding, Period } from "~/types";
 
 /**
  * Portfolio class for managing multi-asset portfolios

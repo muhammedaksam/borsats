@@ -1,8 +1,8 @@
-import { getBistIndexProvider } from "@/providers/bist-index";
+import { getBistIndexProvider } from "~/providers/bist-index";
 import {
   getScannerProvider,
   INTERVAL_MAP,
-} from "@/providers/tradingview-scanner";
+} from "~/providers/tradingview-scanner";
 
 /**
  * Result of scanning a single symbol

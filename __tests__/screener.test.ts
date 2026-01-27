@@ -4,7 +4,7 @@ import {
   screenStocks,
   sectors,
   stockIndices,
-} from "@/screener";
+} from "~/screener";
 
 describe("Screener Module", () => {
   jest.setTimeout(60000);

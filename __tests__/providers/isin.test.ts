@@ -1,4 +1,4 @@
-import { getISINProvider } from "@/providers/isin";
+import { getISINProvider } from "~/providers/isin";
 
 describe("ISINProvider", () => {
   const provider = getISINProvider();

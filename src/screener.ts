@@ -1,6 +1,6 @@
-import { getBistIndexProvider } from "@/providers/bist-index";
-import { getScreenerProvider } from "@/providers/isyatirim-screener";
-import { ScreenerCriteria, ScreenerResult } from "@/types";
+import { getBistIndexProvider } from "~/providers/bist-index";
+import { getScreenerProvider } from "~/providers/isyatirim-screener";
+import { ScreenerCriteria, ScreenerResult } from "~/types";
 
 export class Screener {
   private _filters: Array<[string, string, string, string]> = [];

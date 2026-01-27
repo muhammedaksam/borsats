@@ -1,7 +1,7 @@
-import { DataNotAvailableError } from "@/exceptions";
-import { BaseProvider } from "@/providers/base";
-import { IndexComponent } from "@/types";
-import { TTL } from "@/utils/helpers";
+import { DataNotAvailableError } from "~/exceptions";
+import { BaseProvider } from "~/providers/base";
+import { IndexComponent } from "~/types";
+import { TTL } from "~/utils/helpers";
 
 // BIST index components CSV URL
 const INDEX_COMPONENTS_URL =

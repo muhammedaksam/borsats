@@ -1,16 +1,16 @@
-import { getHedefFiyatProvider } from "@/providers/hedeffiyat";
-import { getISINProvider } from "@/providers/isin";
+import { getHedefFiyatProvider } from "~/providers/hedeffiyat";
+import { getISINProvider } from "~/providers/isin";
 import {
   CapitalIncreaseData,
   CompanyMetrics,
   getIsYatirimProvider,
-} from "@/providers/isyatirim";
-import { getKAPProvider } from "@/providers/kap";
-import { getTradingViewProvider } from "@/providers/tradingview";
+} from "~/providers/isyatirim";
+import { getKAPProvider } from "~/providers/kap";
+import { getTradingViewProvider } from "~/providers/tradingview";
 import {
   ETFHolder,
   getTradingViewETFProvider,
-} from "@/providers/tradingview-etf";
+} from "~/providers/tradingview-etf";
 import {
   calculateADX,
   calculateATR,
@@ -23,7 +23,7 @@ import {
   calculateStochastic,
   calculateVWAP,
   TechnicalAnalyzer,
-} from "@/technical";
+} from "~/technical";
 import {
   BalanceSheet,
   CashFlowStatement,
@@ -36,8 +36,8 @@ import {
   OHLCVData,
   Period,
   PriceTarget,
-} from "@/types";
-import { cleanSymbol } from "@/utils/helpers";
+} from "~/types";
+import { cleanSymbol } from "~/utils/helpers";
 
 /**
  * Extended OHLCV Data with Corporate Actions
@@ -707,7 +707,7 @@ export class Ticker {
     period: Period = "1mo",
     interval: Interval = "1d",
   ): Promise<OHLCVData[]> {
-    const { calculateHeikinAshi } = await import("@/charts");
+    const { calculateHeikinAshi } = await import("~/charts");
     const hist = await this.history({ period, interval });
     if (hist.length === 0) return [];
     return calculateHeikinAshi(hist);

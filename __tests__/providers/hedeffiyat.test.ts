@@ -1,7 +1,7 @@
-import { getHedefFiyatProvider } from "@/providers/hedeffiyat";
+import { getHedefFiyatProvider } from "~/providers/hedeffiyat";
 
 // Mock BaseProvider
-jest.mock("@/providers/base", () => {
+jest.mock("~/providers/base", () => {
   return {
     BaseProvider: class BaseProvider {
       public client = {

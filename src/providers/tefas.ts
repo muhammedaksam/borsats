@@ -1,7 +1,8 @@
 import https from "https";
-import { APIError, DataNotAvailableError } from "@/exceptions";
-import { BaseProvider } from "@/providers/base";
-import { TTL } from "@/utils/helpers";
+
+import { APIError, DataNotAvailableError } from "~/exceptions";
+import { BaseProvider } from "~/providers/base";
+import { TTL } from "~/utils/helpers";
 
 export interface FundDetail {
   fund_code: string;

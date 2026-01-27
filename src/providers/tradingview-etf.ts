@@ -1,5 +1,5 @@
-import { APIError } from "@/exceptions";
-import { BaseProvider } from "@/providers/base";
+import { APIError } from "~/exceptions";
+import { BaseProvider } from "~/providers/base";
 
 export interface ETFHolder {
   symbol: string;

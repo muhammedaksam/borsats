@@ -1,5 +1,4 @@
-import { getTEFASProvider } from "@/providers/tefas";
-
+import { getTEFASProvider } from "~/providers/tefas";
 import { resilientTest } from "../helpers/network-utils";
 
 // Mock TEFAS Provider

@@ -11,7 +11,7 @@ import {
   AllRatesRecord,
   getTCMBRatesProvider,
   RateRecord,
-} from "@/providers/tcmb-rates";
+} from "~/providers/tcmb-rates";
 
 export { RateRecord, AllRatesRecord };
 

@@ -1,5 +1,4 @@
-import { BaseProvider } from "@/providers/base";
-
+import { BaseProvider } from "~/providers/base";
 import { getKAPProvider } from "./kap";
 
 export class ISINProvider extends BaseProvider {

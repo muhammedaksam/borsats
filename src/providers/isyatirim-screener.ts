@@ -1,8 +1,9 @@
-import { APIError } from "@/exceptions";
-import { BaseProvider } from "@/providers/base";
-import { ScreenerCriteria, ScreenerResult } from "@/types";
-import { TTL } from "@/utils/helpers";
 import * as cheerio from "cheerio";
+
+import { APIError } from "~/exceptions";
+import { BaseProvider } from "~/providers/base";
+import { ScreenerCriteria, ScreenerResult } from "~/types";
+import { TTL } from "~/utils/helpers";
 
 // API Response Types
 interface IsYatirimCriteriaResponse {

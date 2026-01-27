@@ -1,4 +1,4 @@
-import { OHLCVData } from "@/types";
+import { OHLCVData } from "~/types";
 
 /**
  * Calculate Heikin Ashi candlesticks from standard OHLCV data.

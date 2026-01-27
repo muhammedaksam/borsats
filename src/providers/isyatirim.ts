@@ -1,13 +1,14 @@
+import axios from "axios";
+import * as cheerio from "cheerio";
+
 import {
   APIError,
   DataNotAvailableError,
   TickerNotFoundError,
-} from "@/exceptions";
-import { BaseProvider } from "@/providers/base";
-import { CurrentData, OHLCVData } from "@/types";
-import { TTL } from "@/utils/helpers";
-import axios from "axios";
-import * as cheerio from "cheerio";
+} from "~/exceptions";
+import { BaseProvider } from "~/providers/base";
+import { CurrentData, OHLCVData } from "~/types";
+import { TTL } from "~/utils/helpers";
 
 export interface DividendData {
   date: Date;

@@ -6,7 +6,7 @@ import {
   LOCAL_CALC_FIELDS,
   OPERATORS,
   TVScreenerProvider,
-} from "@/providers/tradingview-screener-native";
+} from "~/providers/tradingview-screener-native";
 
 describe("TradingView Screener Native", () => {
   describe("FIELD_MAP", () => {

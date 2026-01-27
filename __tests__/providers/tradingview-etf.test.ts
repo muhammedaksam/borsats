@@ -1,4 +1,4 @@
-import { getTradingViewETFProvider } from "@/providers/tradingview-etf";
+import { getTradingViewETFProvider } from "~/providers/tradingview-etf";
 
 // Mock ETF Provider
 class MockETFProvider

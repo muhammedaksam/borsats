@@ -1,4 +1,4 @@
-import * as borsats from "@/index";
+import * as borsats from "~/index";
 
 describe("Library Exports", () => {
   test("should export Ticker and related", () => {

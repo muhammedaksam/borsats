@@ -1,12 +1,12 @@
-import { getBistIndexProvider } from "@/providers/bist-index";
-import { getTradingViewProvider } from "@/providers/tradingview";
+import { getBistIndexProvider } from "~/providers/bist-index";
+import { getTradingViewProvider } from "~/providers/tradingview";
 import {
   IndexComponent,
   IndexInfo,
   Interval,
   OHLCVData,
   Period,
-} from "@/types";
+} from "~/types";
 
 /**
  * Known market indices with their names

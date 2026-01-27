@@ -1,9 +1,10 @@
 import os from "os";
-import { APIError, AuthenticationError } from "@/exceptions";
-import { BaseProvider } from "@/providers/base";
-import { CurrentData, OHLCVData } from "@/types";
 import { AxiosInstance } from "axios";
 import WebSocket from "ws";
+
+import { APIError, AuthenticationError } from "~/exceptions";
+import { BaseProvider } from "~/providers/base";
+import { CurrentData, OHLCVData } from "~/types";
 
 // Module-level auth storage
 let authCredentials: {

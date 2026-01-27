@@ -1,13 +1,14 @@
-import { APIError, DataNotAvailableError } from "@/exceptions";
-import { BaseProvider } from "@/providers/base";
+import * as cheerio from "cheerio";
+
+import { APIError, DataNotAvailableError } from "~/exceptions";
+import { BaseProvider } from "~/providers/base";
 import {
   BankRate,
   CurrentData,
   MetalInstitutionRate,
   OHLCVData,
-} from "@/types";
-import { TTL } from "@/utils/helpers";
-import * as cheerio from "cheerio";
+} from "~/types";
+import { TTL } from "~/utils/helpers";
 
 export class DovizcomProvider extends BaseProvider {
   private static readonly BASE_URL = "https://api.doviz.com/api/v12";

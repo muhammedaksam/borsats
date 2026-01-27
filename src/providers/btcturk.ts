@@ -1,6 +1,6 @@
-import { APIError, DataNotAvailableError } from "@/exceptions";
-import { BaseProvider } from "@/providers/base";
-import { CurrentData, OHLCVData } from "@/types";
+import { APIError, DataNotAvailableError } from "~/exceptions";
+import { BaseProvider } from "~/providers/base";
+import { CurrentData, OHLCVData } from "~/types";
 
 /**
  * BTCTurk provider for cryptocurrency data

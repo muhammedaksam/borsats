@@ -3,10 +3,11 @@
  * API: https://www.doviz.com/calendar/getCalendarEvents
  */
 
-import { APIError } from "@/exceptions";
-import { BaseProvider } from "@/providers/base";
-import { TTL } from "@/utils/helpers";
 import * as cheerio from "cheerio";
+
+import { APIError } from "~/exceptions";
+import { BaseProvider } from "~/providers/base";
+import { TTL } from "~/utils/helpers";
 
 export interface CalendarEvent {
   date: Date;

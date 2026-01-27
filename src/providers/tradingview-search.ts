@@ -1,4 +1,4 @@
-import { BaseProvider } from "@/providers/base";
+import { BaseProvider } from "~/providers/base";
 
 export interface SearchResult {
   symbol: string;

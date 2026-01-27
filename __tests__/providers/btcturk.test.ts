@@ -1,5 +1,4 @@
-import { getBTCTurkProvider } from "@/providers/btcturk";
-
+import { getBTCTurkProvider } from "~/providers/btcturk";
 import { resilientTest } from "../helpers/network-utils";
 
 describe("BTCTurkProvider", () => {
