@@ -1,6 +1,7 @@
 {
   "name": "@muhammedaksam/borsats",
-  "version": "0.1.1",
+  "version": "0.1.2",
+  "type": "module",
   "description": "TypeScript library for Turkish financial markets - BIST stocks, forex, crypto, funds, inflation",
   "author": "Muhammed Mustafa AKŞAM <info@muhammedaksam.com.tr> (https://github.com/muhammedaksam)",
   "license": "MIT",
@@ -28,14 +29,14 @@
     "istanbul",
     "typescript"
   ],
-  "main": "./dist/index.js",
-  "module": "./dist/index.mjs",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "require": "./dist/index.js",
-      "import": "./dist/index.mjs",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
     }
   },
   "files": [
