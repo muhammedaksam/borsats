@@ -1,4 +1,4 @@
-import { VIOP } from "@/viop";
+import { VIOP } from "~/viop";
 
 describe("VIOP Module", () => {
   jest.setTimeout(60000);

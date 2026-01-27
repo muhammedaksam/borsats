@@ -1,5 +1,6 @@
 import events from "events";
-import { TradingViewStream } from "@/stream";
+
+import { TradingViewStream } from "~/stream";
 
 // Define global interface for the test context
 declare global {
@@ -33,7 +34,7 @@ jest.mock("ws", () => {
   return MockWebSocket;
 });
 
-jest.mock("@/providers/pine-facade", () => ({
+jest.mock("~/providers/pine-facade", () => ({
   getPineFacadeProvider: () => ({
     getIndicator: jest.fn().mockResolvedValue({
       pineId: "STD;RSI",
@@ -45,7 +46,7 @@ jest.mock("@/providers/pine-facade", () => ({
   },
 }));
 
-jest.mock("@/providers/tradingview", () => ({
+jest.mock("~/providers/tradingview", () => ({
   getTradingViewAuth: () => ({ authToken: "mock_token" }),
 }));
 

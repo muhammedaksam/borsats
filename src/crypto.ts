@@ -1,6 +1,6 @@
-import { getBTCTurkProvider } from "@/providers/btcturk";
-import { TechnicalAnalyzer } from "@/technical";
-import { CurrentData, OHLCVData } from "@/types";
+import { getBTCTurkProvider } from "~/providers/btcturk";
+import { TechnicalAnalyzer } from "~/technical";
+import { CurrentData, OHLCVData } from "~/types";
 
 export class Crypto {
   private _pair: string;

@@ -1,8 +1,8 @@
-import { createReplay, ReplayCandle, ReplaySession } from "@/replay";
-import { OHLCVData } from "@/types";
+import { createReplay, ReplayCandle, ReplaySession } from "~/replay";
+import { OHLCVData } from "~/types";
 
 // Mock Ticker for createReplay
-jest.mock("@/ticker", () => ({
+jest.mock("~/ticker", () => ({
   Ticker: jest.fn().mockImplementation(() => ({
     history: jest.fn().mockResolvedValue([
       {

@@ -1,7 +1,7 @@
-import { scan, TechnicalScanner } from "@/scanner";
+import { scan, TechnicalScanner } from "~/scanner";
 
 // Mock the providers
-jest.mock("@/providers/bist-index", () => ({
+jest.mock("~/providers/bist-index", () => ({
   getBistIndexProvider: jest.fn(() => ({
     getIndexConstituents: jest
       .fn()
@@ -9,7 +9,7 @@ jest.mock("@/providers/bist-index", () => ({
   })),
 }));
 
-jest.mock("@/providers/tradingview-scanner", () => ({
+jest.mock("~/providers/tradingview-scanner", () => ({
   getScannerProvider: jest.fn(() => ({
     scanTA: jest.fn().mockResolvedValue([
       {

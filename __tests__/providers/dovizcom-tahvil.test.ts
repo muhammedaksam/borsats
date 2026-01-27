@@ -1,5 +1,5 @@
-import { DataNotAvailableError } from "@/exceptions";
-import { getTahvilProvider } from "@/providers/dovizcom-tahvil";
+import { DataNotAvailableError } from "~/exceptions";
+import { getTahvilProvider } from "~/providers/dovizcom-tahvil";
 
 describe("DovizcomTahvilProvider", () => {
   const provider = getTahvilProvider();

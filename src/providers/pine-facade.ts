@@ -2,8 +2,8 @@ import {
   APIError,
   AuthenticationError,
   DataNotAvailableError,
-} from "@/exceptions";
-import { BaseProvider } from "@/providers/base";
+} from "~/exceptions";
+import { BaseProvider } from "~/providers/base";
 
 // Standard TradingView indicators
 export const STANDARD_INDICATORS: Record<string, string> = {

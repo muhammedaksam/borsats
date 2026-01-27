@@ -1,6 +1,7 @@
 import { EventEmitter } from "events";
-import { Ticker } from "@/ticker";
-import { Interval, OHLCVData, Period } from "@/types";
+
+import { Ticker } from "~/ticker";
+import { Interval, OHLCVData, Period } from "~/types";
 
 export interface ReplayCandle extends OHLCVData {
   _index: number;

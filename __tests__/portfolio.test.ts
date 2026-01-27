@@ -1,10 +1,10 @@
-import { Crypto } from "@/crypto";
-import { Fund } from "@/fund";
-import { FX } from "@/fx";
-import { Portfolio } from "@/portfolio";
-import { FundDetail } from "@/providers/tefas";
-import { FastInfo, Ticker } from "@/ticker";
-import { CurrentData } from "@/types";
+import { Crypto } from "~/crypto";
+import { Fund } from "~/fund";
+import { FX } from "~/fx";
+import { Portfolio } from "~/portfolio";
+import { FundDetail } from "~/providers/tefas";
+import { FastInfo, Ticker } from "~/ticker";
+import { CurrentData } from "~/types";
 
 describe("Portfolio Module", () => {
   jest.setTimeout(60000);

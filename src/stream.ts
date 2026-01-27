@@ -1,11 +1,12 @@
 import { EventEmitter } from "events";
+import WebSocket from "ws";
+
 import {
   getPineFacadeProvider,
   INDICATOR_OUTPUTS,
   IndicatorMetadata,
-} from "@/providers/pine-facade";
-import { getTradingViewAuth } from "@/providers/tradingview";
-import WebSocket from "ws";
+} from "~/providers/pine-facade";
+import { getTradingViewAuth } from "~/providers/tradingview";
 
 export interface Quote {
   symbol: string;

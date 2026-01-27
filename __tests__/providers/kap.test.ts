@@ -1,5 +1,4 @@
-import { getKAPProvider } from "@/providers/kap";
-
+import { getKAPProvider } from "~/providers/kap";
 import { resilientTest } from "../helpers/network-utils";
 
 describe("KAPProvider", () => {

@@ -6,7 +6,7 @@
 import {
   CalendarEvent,
   getCalendarProvider,
-} from "@/providers/dovizcom-calendar";
+} from "~/providers/dovizcom-calendar";
 
 export { CalendarEvent };
 

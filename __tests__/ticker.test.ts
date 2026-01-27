@@ -1,4 +1,4 @@
-import { Ticker } from "@/ticker";
+import { Ticker } from "~/ticker";
 
 describe("Ticker Integration Tests", () => {
   jest.setTimeout(60000);

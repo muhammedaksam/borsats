@@ -1,15 +1,15 @@
 import {
   CanlidovizProvider,
   getCanliDovizProvider,
-} from "@/providers/canlidoviz";
-import { getDovizcomProvider } from "@/providers/dovizcom";
-import { getTradingViewProvider } from "@/providers/tradingview";
+} from "~/providers/canlidoviz";
+import { getDovizcomProvider } from "~/providers/dovizcom";
+import { getTradingViewProvider } from "~/providers/tradingview";
 import {
   BankRate,
   CurrentData,
   MetalInstitutionRate,
   OHLCVData,
-} from "@/types";
+} from "~/types";
 
 const TV_CURRENCY_MAP: Record<string, [string, string]> = {
   USD: ["FX", "USDTRY"],

@@ -7,7 +7,7 @@ import {
   InvalidPeriodError,
   RateLimitError,
   TickerNotFoundError,
-} from "@/exceptions";
+} from "~/exceptions";
 
 describe("Exceptions Module", () => {
   test("BorsaTSError", () => {

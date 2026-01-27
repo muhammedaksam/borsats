@@ -1,5 +1,5 @@
-import { calculateHeikinAshi } from "@/charts";
-import { OHLCVData } from "@/types";
+import { calculateHeikinAshi } from "~/charts";
+import { OHLCVData } from "~/types";
 
 /**
  * Calculate Simple Moving Average (SMA)

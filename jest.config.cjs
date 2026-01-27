@@ -40,11 +40,7 @@ module.exports = {
           skipLibCheck: true,
           baseUrl: ".",
           paths: {
-            "@/*": ["src/*"],
-            "@/types": ["src/types"],
-            "@/exceptions": ["src/exceptions"],
-            "@/providers/*": ["src/providers/*"],
-            "@/utils/*": ["src/utils/*"],
+            "~/*": ["src/*"],
           },
         },
       },

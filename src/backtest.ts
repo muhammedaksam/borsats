@@ -1,6 +1,6 @@
-import { TechnicalAnalyzer } from "@/technical";
-import { Ticker } from "@/ticker";
-import { Interval, OHLCVData, Period } from "@/types";
+import { TechnicalAnalyzer } from "~/technical";
+import { Ticker } from "~/ticker";
+import { Interval, OHLCVData, Period } from "~/types";
 
 export type Signal = "BUY" | "SELL" | "HOLD" | null;
 export type Position = "long" | "short" | null;

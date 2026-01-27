@@ -1,7 +1,8 @@
-import { APIError, RateLimitError } from "@/exceptions";
-import { ProviderConfig, RequestOptions } from "@/types";
-import { SimpleCache, sleep } from "@/utils/helpers";
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from "axios";
+
+import { APIError, RateLimitError } from "~/exceptions";
+import { ProviderConfig, RequestOptions } from "~/types";
+import { SimpleCache, sleep } from "~/utils/helpers";
 
 /**
  * Abstract base class for all data providers

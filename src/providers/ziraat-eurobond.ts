@@ -5,7 +5,7 @@
  * Includes USD and EUR denominated bonds with bid/ask prices and yields.
  */
 
-import { BaseProvider } from "@/providers/base";
+import { BaseProvider } from "~/providers/base";
 
 const ZIRAAT_URL =
   "https://www.ziraatbank.com.tr/tr/_layouts/15/Ziraat/FaizOranlari/Ajax.aspx/GetZBBonoTahvilOran";

@@ -3,9 +3,10 @@
  * Fetches central bank policy rates from tcmb.gov.tr
  */
 
-import { BaseProvider } from "@/providers/base";
-import { TTL } from "@/utils/helpers";
 import * as cheerio from "cheerio";
+
+import { BaseProvider } from "~/providers/base";
+import { TTL } from "~/utils/helpers";
 
 const TCMB_URLS: Record<string, string> = {
   policy:

@@ -1,4 +1,4 @@
-import { Bond, bonds, riskFreeRate } from "@/bond";
+import { Bond, bonds, riskFreeRate } from "~/bond";
 
 describe("Bond Module", () => {
   jest.setTimeout(60000);

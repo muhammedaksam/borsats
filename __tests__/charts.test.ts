@@ -1,5 +1,5 @@
-import { calculateHeikinAshi } from "@/charts";
-import { OHLCVData } from "@/types";
+import { calculateHeikinAshi } from "~/charts";
+import { OHLCVData } from "~/types";
 
 describe("Charts - Heikin Ashi", () => {
   test("should return empty array for empty input", () => {

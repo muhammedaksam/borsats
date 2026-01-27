@@ -1,5 +1,4 @@
-import { getCanliDovizProvider } from "@/providers/canlidoviz";
-
+import { getCanliDovizProvider } from "~/providers/canlidoviz";
 import { resilientTest } from "../helpers/network-utils";
 
 describe("CanliDovizProvider", () => {

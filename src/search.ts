@@ -1,9 +1,9 @@
-import { searchCompanies } from "@/market";
+import { searchCompanies } from "~/market";
 import {
   getSearchProvider,
   SearchResult,
-} from "@/providers/tradingview-search";
-import { AssetType } from "@/types";
+} from "~/providers/tradingview-search";
+import { AssetType } from "~/types";
 
 /**
  * Search results from different sources

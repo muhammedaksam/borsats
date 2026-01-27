@@ -1,4 +1,4 @@
-import { BondData, getTahvilProvider } from "@/providers/dovizcom-tahvil";
+import { BondData, getTahvilProvider } from "~/providers/dovizcom-tahvil";
 
 export class Bond {
   public static readonly MATURITIES = ["2Y", "5Y", "10Y"];

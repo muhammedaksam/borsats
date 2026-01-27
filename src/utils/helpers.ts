@@ -1,4 +1,4 @@
-import { Interval, Period } from "@/types";
+import { Interval, Period } from "~/types";
 
 /**
  * Period mapping to number of days

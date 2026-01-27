@@ -1,5 +1,5 @@
-import { BaseProvider } from "@/providers/base";
-import { TTL } from "@/utils/helpers";
+import { BaseProvider } from "~/providers/base";
+import { TTL } from "~/utils/helpers";
 
 export interface PriceTargets {
   current: number | null;

@@ -5,8 +5,8 @@
  * and TVScreenerProvider for condition-based scanning.
  */
 
-import { APIError } from "@/exceptions";
-import { BaseProvider } from "@/providers/base";
+import { APIError } from "~/exceptions";
+import { BaseProvider } from "~/providers/base";
 
 export const FIELD_MAP: Record<string, string> = {
   // Price fields

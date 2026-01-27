@@ -1,5 +1,5 @@
-import { APIError } from "@/exceptions";
-import { getVIOPProvider } from "@/providers/viop";
+import { APIError } from "~/exceptions";
+import { getVIOPProvider } from "~/providers/viop";
 
 describe("VIOPProvider", () => {
   const provider = getVIOPProvider();

@@ -1,4 +1,4 @@
-import { companies, searchCompanies } from "@/market";
+import { companies, searchCompanies } from "~/market";
 
 describe("Market Module", () => {
   test("Market companies list", async () => {

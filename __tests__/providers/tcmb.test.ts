@@ -1,5 +1,4 @@
-import { getTCMBProvider } from "@/providers/tcmb";
-
+import { getTCMBProvider } from "~/providers/tcmb";
 import { resilientTest } from "../helpers/network-utils";
 
 describe("TCMBProvider", () => {

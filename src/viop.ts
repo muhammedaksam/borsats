@@ -5,7 +5,7 @@
  * Note: Data is delayed by ~15 minutes
  */
 
-import { getVIOPProvider, VIOPContract } from "@/providers/viop";
+import { getVIOPProvider, VIOPContract } from "~/providers/viop";
 
 export { VIOPContract };
 

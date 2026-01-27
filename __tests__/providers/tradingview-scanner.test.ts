@@ -1,4 +1,4 @@
-import { getScannerProvider } from "@/providers/tradingview-scanner";
+import { getScannerProvider } from "~/providers/tradingview-scanner";
 
 // Mock Scanner Provider to inject data
 class MockScannerProvider

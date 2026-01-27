@@ -1,7 +1,8 @@
-import { APIError } from "@/exceptions";
-import { BaseProvider } from "@/providers/base";
-import { TTL } from "@/utils/helpers";
 import * as cheerio from "cheerio";
+
+import { APIError } from "~/exceptions";
+import { BaseProvider } from "~/providers/base";
+import { TTL } from "~/utils/helpers";
 
 // Ziraat Bank Eurobond API endpoint
 const ZIRAAT_URL =

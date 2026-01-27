@@ -1,5 +1,5 @@
-import { download, Tickers } from "@/multi";
-import { Ticker } from "@/ticker";
+import { download, Tickers } from "~/multi";
+import { Ticker } from "~/ticker";
 
 describe("Multi Module", () => {
   jest.setTimeout(60000);

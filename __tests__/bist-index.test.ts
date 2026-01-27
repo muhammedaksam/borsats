@@ -1,4 +1,4 @@
-import { allIndices, index, indices } from "@/bist-index";
+import { allIndices, index, indices } from "~/bist-index";
 
 describe("BIST Index Wrapper", () => {
   test("indices() should return list of index symbols", async () => {

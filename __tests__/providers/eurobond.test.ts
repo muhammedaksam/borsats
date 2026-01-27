@@ -1,4 +1,4 @@
-import { Eurobond, eurobonds, getEurobondProvider } from "@/eurobond";
+import { Eurobond, eurobonds, getEurobondProvider } from "~/eurobond";
 
 describe("ZiraatEurobondProvider", () => {
   const provider = getEurobondProvider();

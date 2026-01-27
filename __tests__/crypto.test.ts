@@ -1,4 +1,4 @@
-import { Crypto, cryptoList } from "@/crypto";
+import { Crypto, cryptoList } from "~/crypto";
 
 describe("Crypto", () => {
   const coin = new Crypto("BTCTRY");

@@ -1,9 +1,9 @@
-import { AuthenticationError, DataNotAvailableError } from "@/exceptions";
+import { AuthenticationError, DataNotAvailableError } from "~/exceptions";
 import {
   getPineFacadeProvider,
   INDICATOR_OUTPUTS,
   STANDARD_INDICATORS,
-} from "@/providers/pine-facade";
+} from "~/providers/pine-facade";
 
 describe("PineFacade Provider Tests", () => {
   jest.setTimeout(30000);

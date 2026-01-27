@@ -2,7 +2,7 @@ import {
   Eurobond,
   getEurobondProvider,
   ZiraatEurobondProvider,
-} from "@/providers/ziraat-eurobond";
+} from "~/providers/ziraat-eurobond";
 
 // Helper type for accessing private methods
 type ProviderInternals = {

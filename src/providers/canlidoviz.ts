@@ -1,8 +1,9 @@
-import { APIError, DataNotAvailableError } from "@/exceptions";
-import { BaseProvider } from "@/providers/base";
-import { BankRate, CurrentData, InstitutionRate, OHLCVData } from "@/types";
-import { TTL } from "@/utils/helpers";
 import * as cheerio from "cheerio";
+
+import { APIError, DataNotAvailableError } from "~/exceptions";
+import { BaseProvider } from "~/providers/base";
+import { BankRate, CurrentData, InstitutionRate, OHLCVData } from "~/types";
+import { TTL } from "~/utils/helpers";
 
 /**
  * Canlidoviz provider for forex data from canlidoviz.com.

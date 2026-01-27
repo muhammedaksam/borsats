@@ -1,4 +1,4 @@
-import { getTCMBProvider } from "@/providers/tcmb";
+import { getTCMBProvider } from "~/providers/tcmb";
 
 /**
  * Inflation class

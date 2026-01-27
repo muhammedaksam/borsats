@@ -8,7 +8,7 @@ import {
   parseDate,
   roundTo,
   SimpleCache,
-} from "@/utils/helpers";
+} from "~/utils/helpers";
 
 describe("Helpers", () => {
   test("parseDate", () => {

@@ -1,4 +1,4 @@
-import { getKAPProvider } from "@/providers/kap";
+import { getKAPProvider } from "~/providers/kap";
 
 export interface CompanyInfo {
   ticker: string;

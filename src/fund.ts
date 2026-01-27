@@ -1,12 +1,12 @@
-import { riskFreeRate } from "@/bond";
+import { riskFreeRate } from "~/bond";
 import {
   AllocationItem,
   FundDetail,
   FundHistoryItem,
   getTEFASProvider,
-} from "@/providers/tefas";
-import { TechnicalAnalyzer } from "@/technical";
-import { OHLCVData } from "@/types";
+} from "~/providers/tefas";
+import { TechnicalAnalyzer } from "~/technical";
+import { OHLCVData } from "~/types";
 
 export interface FundRiskMetrics {
   annualizedReturn: number;
