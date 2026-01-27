@@ -281,7 +281,7 @@ describe("ZiraatEurobondProvider Integration", () => {
       expect(typeof bond.currency).toBe("string");
       expect(typeof bond.daysToMaturity).toBe("number");
     }
-  }, 15000);
+  }, 30000);
 
   test("getEurobonds filters by USD currency", async () => {
     const bonds = await provider.getEurobonds("USD");
@@ -289,7 +289,7 @@ describe("ZiraatEurobondProvider Integration", () => {
     bonds.forEach((bond) => {
       expect(bond.currency).toBe("USD");
     });
-  }, 15000);
+  }, 30000);
 
   test("getEurobonds filters by EUR currency", async () => {
     const bonds = await provider.getEurobonds("EUR");
