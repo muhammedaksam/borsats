@@ -1,0 +1,43 @@
+name: "Setup BorsaTS Environment"
+description: "Setup Node.js, pnpm, and install dependencies for BorsaTS"
+
+inputs:
+  node-version:
+    description: "Node.js version to use"
+    required: false
+    default: "22"
+  cache:
+    description: "Enable caching for dependencies"
+    required: false
+    default: "true"
+  install-deps:
+    description: "Whether to install dependencies"
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: 10.23.0
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v6
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: ${{ inputs.cache == 'true' && 'pnpm' || '' }}
+
+    - name: Install dependencies
+      if: inputs.install-deps == 'true'
+      shell: bash
+      run: pnpm install --frozen-lockfile
+
+    - name: Environment summary
+      shell: bash
+      run: |
+        echo "✅ Environment setup complete!"
+        echo "📦 Node.js: $(node --version)"
+        echo "📦 pnpm: $(pnpm --version)"
+        echo "📁 Working directory: $(pwd)"
