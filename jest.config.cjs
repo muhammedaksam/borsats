@@ -6,6 +6,7 @@ module.exports = {
   testTimeout: 120000,
   roots: ["<rootDir>/src", "<rootDir>/__tests__"],
   testMatch: ["**/__tests__/**/*.ts", "**/?(*.)+(spec|test).ts"],
+  testPathIgnorePatterns: ["/node_modules/", "__tests__/helpers/"],
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
   },

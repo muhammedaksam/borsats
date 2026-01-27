@@ -1,5 +1,7 @@
 import { getTEFASProvider } from "@/providers/tefas";
 
+import { resilientTest } from "../helpers/network-utils";
+
 // Mock TEFAS Provider
 class MockTEFASProvider
   extends Object.getPrototypeOf(getTEFASProvider()).constructor
@@ -25,34 +27,15 @@ describe("TEFASProvider", () => {
     provider.clearCache();
   });
 
-  const runSafe = async (fn: () => Promise<void>) => {
-    try {
-      await fn();
-    } catch (e: unknown) {
-      if (
-        e instanceof Error &&
-        (e.name === "DataNotAvailableError" ||
-          e.message.includes("No data") ||
-          e.message.includes("429"))
-      ) {
-        console.warn(
-          "Skipping TEFAS test due to data/API unavailability:",
-          e.message,
-        );
-      } else {
-        throw e;
-      }
-    }
-  };
-
   describe("getFundDetail", () => {
-    it("should fetch details for TTE", async () => {
-      await runSafe(async () => {
+    it(
+      "should fetch details for TTE",
+      resilientTest(async () => {
         const detail = await provider.getFundDetail("TTE");
         expect(detail.fund_code).toBe("TTE");
         expect(detail.price).toBeGreaterThan(0);
-      });
-    });
+      }),
+    );
 
     it("should throw DataNotAvailableError for unknown fund", async () => {
       await expect(
@@ -62,8 +45,9 @@ describe("TEFASProvider", () => {
   });
 
   describe("getHistory", () => {
-    it("should fetch historical prices for TTE", async () => {
-      await runSafe(async () => {
+    it(
+      "should fetch historical prices for TTE",
+      resilientTest(async () => {
         const history = await provider.getHistory({
           fundCode: "TTE",
           period: "1mo",
@@ -72,29 +56,32 @@ describe("TEFASProvider", () => {
         if (history.length > 0) {
           expect(history[0].price).toBeGreaterThan(0);
         }
-      });
-    });
+      }),
+    );
   });
 
   describe("getAllocation", () => {
-    it("should fetch allocation for TTE", async () => {
-      await runSafe(async () => {
+    it(
+      "should fetch allocation for TTE",
+      resilientTest(async () => {
         const allocation = await provider.getAllocation("TTE");
         expect(Array.isArray(allocation)).toBe(true);
-      });
-    });
+      }),
+    );
   });
 
   describe("search", () => {
-    it("should search funds by name (TTE)", async () => {
-      await runSafe(async () => {
+    it(
+      "should search funds by name (TTE)",
+      resilientTest(async () => {
         const results = await provider.search("TTE");
         if (results.length > 0) {
           expect(results[0].fund_code).toBe("TTE");
         }
-      });
-    });
+      }),
+    );
   });
+
   describe("TEFAS - Mocked parsing tests", () => {
     test("Mocked getFundDetail parsing", async () => {
       const provider = new MockTEFASProvider();
