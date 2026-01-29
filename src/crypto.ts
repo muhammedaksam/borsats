@@ -1,6 +1,7 @@
 import { getBTCTurkProvider } from "~/providers/btcturk";
+import { getScannerProvider, TASignals } from "~/providers/tradingview-scanner";
 import { TechnicalAnalyzer } from "~/technical";
-import { CurrentData, OHLCVData } from "~/types";
+import { CurrentData, Interval, OHLCVData } from "~/types";
 
 export class Crypto {
   private _pair: string;
@@ -54,6 +55,49 @@ export class Crypto {
   async technicals(interval: string = "1d"): Promise<TechnicalAnalyzer> {
     const hist = await this.history({ interval });
     return new TechnicalAnalyzer(hist);
+  }
+
+  /**
+   * Get TradingView technical analysis signals
+   */
+  async taSignals(interval: Interval = "1d"): Promise<TASignals> {
+    // Extract base currency from pair (e.g., "BTCTRY" -> "BTC")
+    const base = this._pair.replace("TRY", "").replace("USDT", "");
+    // Use Binance USDT pair for better TradingView coverage
+    const provider = getScannerProvider();
+    return provider.getTASignals(`BINANCE:${base}USDT`, "crypto", interval);
+  }
+
+  /**
+   * Get TA signals for all available timeframes
+   */
+  async taSignalsAllTimeframes(): Promise<
+    Record<string, TASignals | { error: string }>
+  > {
+    const intervals: Interval[] = [
+      "1m",
+      "5m",
+      "15m",
+      "30m",
+      "1h",
+      "4h",
+      "1d",
+      "1w",
+      "1mo",
+    ];
+    const result: Record<string, TASignals | { error: string }> = {};
+
+    for (const interval of intervals) {
+      try {
+        result[interval] = await this.taSignals(interval);
+      } catch (e) {
+        result[interval] = {
+          error: e instanceof Error ? e.message : String(e),
+        };
+      }
+    }
+
+    return result;
   }
 }
 

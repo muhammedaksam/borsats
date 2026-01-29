@@ -2,6 +2,7 @@ import { searchCompanies } from "~/market";
 import {
   getSearchProvider,
   SearchResult,
+  VIOPContract,
 } from "~/providers/tradingview-search";
 import { AssetType } from "~/types";
 
@@ -146,4 +147,34 @@ export async function searchIndex(
   limit: number = 50,
 ): Promise<string[]> {
   return search(query, { type: "index", limit }) as Promise<string[]>;
+}
+
+/**
+ * Search VIOP symbols
+ */
+export async function searchViop(
+  query: string,
+  limit: number = 50,
+): Promise<string[]> {
+  return search(query, { type: "futures", exchange: "BIST", limit }) as Promise<
+    string[]
+  >;
+}
+
+/**
+ * Get available VIOP contracts for a base symbol
+ */
+export async function viopContracts(
+  baseSymbol: string,
+  fullInfo: boolean = false,
+): Promise<string[] | VIOPContract[]> {
+  const provider = getSearchProvider();
+  const contracts = await provider.getVIOPContracts(baseSymbol);
+
+  if (fullInfo) {
+    return contracts;
+  }
+
+  // Filter out continuous contracts as they don't work with streaming/history often
+  return contracts.filter((c) => !c.is_continuous).map((c) => c.symbol);
 }

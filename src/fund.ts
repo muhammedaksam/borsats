@@ -6,7 +6,7 @@ import {
   getTEFASProvider,
 } from "~/providers/tefas";
 import { TechnicalAnalyzer } from "~/technical";
-import { OHLCVData } from "~/types";
+import { FundType, OHLCVData } from "~/types";
 
 export interface FundRiskMetrics {
   annualizedReturn: number;
@@ -21,9 +21,12 @@ export interface FundRiskMetrics {
 export class Fund {
   private _fundCode: string;
   private _infoCache: FundDetail | null = null;
+  private _fundType: FundType | null = null;
+  private _detectedFundType: FundType | null = null;
 
-  constructor(fundCode: string) {
+  constructor(fundCode: string, fundType: FundType | null = null) {
     this._fundCode = fundCode.toUpperCase();
+    this._fundType = fundType; // Literal type doesn't need toUpperCase(), but it's safe
   }
 
   get fundCode(): string {
@@ -34,14 +37,68 @@ export class Fund {
     return this._fundCode;
   }
 
+  get fundType(): Promise<FundType> {
+    if (this._fundType) return Promise.resolve(this._fundType);
+    if (this._detectedFundType) return Promise.resolve(this._detectedFundType);
+
+    return this.detectFundType();
+  }
+
+  private async detectFundType(): Promise<FundType> {
+    if (this._fundType || this._detectedFundType) {
+      return this._fundType || this._detectedFundType!;
+    }
+
+    const endDt = new Date();
+    const startDt = new Date(endDt.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    // Try YAT first
+    try {
+      const df = await getTEFASProvider().getHistory({
+        fundCode: this._fundCode,
+        start: startDt,
+        end: endDt,
+        fundType: "YAT",
+      });
+      if (df.length > 0) {
+        this._detectedFundType = "YAT";
+        return "YAT";
+      }
+    } catch {
+      // ignore
+    }
+
+    // Try EMK
+    try {
+      const df = await getTEFASProvider().getHistory({
+        fundCode: this._fundCode,
+        start: startDt,
+        end: endDt,
+        fundType: "EMK",
+      });
+      if (df.length > 0) {
+        this._detectedFundType = "EMK";
+        return "EMK";
+      }
+    } catch {
+      // ignore
+    }
+
+    // Default to YAT
+    this._detectedFundType = "YAT";
+    return "YAT";
+  }
+
   get info(): Promise<FundDetail> {
     if (this._infoCache) return Promise.resolve(this._infoCache);
-    return getTEFASProvider()
-      .getFundDetail(this._fundCode)
-      .then((data: FundDetail) => {
-        this._infoCache = data;
-        return data;
-      });
+    return this.fundType.then((type) =>
+      getTEFASProvider()
+        .getFundDetail(this._fundCode, type)
+        .then((data: FundDetail) => {
+          this._infoCache = data;
+          return data;
+        }),
+    );
   }
 
   get detail(): Promise<FundDetail> {
@@ -62,7 +119,14 @@ export class Fund {
   }
 
   get allocation(): Promise<AllocationItem[]> {
-    return getTEFASProvider().getAllocation(this._fundCode);
+    return this.fundType.then((type) =>
+      getTEFASProvider().getAllocation(
+        this._fundCode,
+        undefined,
+        undefined,
+        type,
+      ),
+    );
   }
 
   /**
@@ -76,11 +140,13 @@ export class Fund {
     } = {},
   ): Promise<AllocationItem[]> {
     const { period = "1mo", start, end } = options;
+    const type: FundType = await this.fundType;
     return getTEFASProvider().getAllocationHistory({
       fundCode: this._fundCode,
       period,
       start: start ? new Date(start) : undefined,
       end: end ? new Date(end) : undefined,
+      fundType: type,
     });
   }
 
@@ -92,11 +158,13 @@ export class Fund {
     } = {},
   ): Promise<FundHistoryItem[]> {
     const { period = "1mo", start, end } = options;
+    const type: FundType = await this.fundType;
     return getTEFASProvider().getHistory({
       fundCode: this._fundCode,
       period,
       start: start ? new Date(start) : undefined,
       end: end ? new Date(end) : undefined,
+      fundType: type,
     });
   }
 

@@ -51,8 +51,8 @@ export { Index } from "~/bist-index";
 
 export * from "~/search";
 
-export * from "~/viop";
-export { VIOP } from "~/viop";
+// VIOP has conflict with tradingview-search/VIOPContract, so we export it explicitly
+export { VIOP, VIOPContract } from "~/viop";
 
 export * from "~/tcmb";
 export { TCMB } from "~/tcmb";
