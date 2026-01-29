@@ -300,9 +300,7 @@ export class TVScreenerProvider extends BaseProvider {
     const fields: string[] = [];
 
     for (const token of tokens) {
-      try {
-        this.parseNumber(token);
-      } catch {
+      if (isNaN(this.parseNumber(token))) {
         fields.push(token);
       }
     }

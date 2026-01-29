@@ -38,6 +38,62 @@ export class IsYatirimScreenerProvider extends BaseProvider {
   private sectorsCache: Array<{ id: string; name: string }> | null = null;
   private indicesCache: Array<{ id: string; name: string }> | null = null;
 
+  // Pre-defined templates with actual working criteria
+  // Note: API requires criteria with both min AND max values to work
+  // Market cap in TL (ID 8): roughly $1B = 43B TL, $5B = 215B TL (at ~43 TL/USD)
+  public static readonly TEMPLATES: Record<
+    string,
+    { criteria?: Array<[string, string, string, string]>; oneri?: string }
+  > = {
+    small_cap: {
+      criteria: [["8", "0", "43000", "False"]], // Market cap < ~$1B (43B TL)
+    },
+    mid_cap: {
+      criteria: [["8", "43000", "215000", "False"]], // Market cap $1B-$5B
+    },
+    large_cap: {
+      criteria: [["8", "215000", "5000000", "False"]], // Market cap > $5B
+    },
+    high_dividend: {
+      criteria: [["33", "2", "100", "False"]], // Dividend yield > 2%
+    },
+    high_upside: {
+      criteria: [["61", "0", "200", "False"]], // Positive upside potential
+    },
+    low_upside: {
+      criteria: [["61", "-100", "0", "False"]], // Negative upside
+    },
+    high_volume: {
+      criteria: [["26", "1", "1000", "False"]], // 3M avg volume > $1M
+    },
+    low_volume: {
+      criteria: [["26", "0", "0.5", "False"]], // 3M avg volume < $0.5M
+    },
+    buy_recommendation: {
+      criteria: [["7", "1", "50000", "False"]],
+      oneri: "AL",
+    },
+    sell_recommendation: {
+      criteria: [["7", "1", "50000", "False"]],
+      oneri: "SAT",
+    },
+    high_net_margin: {
+      criteria: [["119", "10", "200", "False"]], // Net margin > 10%
+    },
+    high_return: {
+      criteria: [["22", "0", "100", "False"]], // Positive 1-week relative return
+    },
+    low_pe: {
+      criteria: [["28", "0", "10", "False"]], // P/E < 10
+    },
+    high_roe: {
+      criteria: [["422", "15", "200", "False"]], // ROE > 15%
+    },
+    high_foreign_ownership: {
+      criteria: [["40", "30", "100", "False"]], // Foreign ownership > 30%
+    },
+  };
+
   constructor() {
     super({
       baseUrl: IsYatirimScreenerProvider.BASE_URL,
@@ -251,16 +307,46 @@ export class IsYatirimScreenerProvider extends BaseProvider {
     sector: string = "",
     index: string = "",
     recommendation: string = "",
+    template?: string,
   ): Promise<ScreenerResult[]> {
-    const payload = {
+    const payload: {
+      sektor: string;
+      endeks: string;
+      takip: string;
+      oneri: string;
+      criterias: string[][];
+      lang: string;
+    } = {
       sektor: sector,
       endeks: index,
       takip: "",
       oneri: recommendation,
-      criterias:
-        criterias.length > 0 ? criterias : [["7", "1", "50000", "False"]], // Default price > 1
+      criterias: [],
       lang: "1055", // Turkish
     };
+
+    // Apply template if specified
+    if (template && IsYatirimScreenerProvider.TEMPLATES[template]) {
+      const tmpl = IsYatirimScreenerProvider.TEMPLATES[template];
+      if (tmpl.criteria) {
+        payload.criterias = tmpl.criteria.map((c) => [...c]);
+      }
+      if (tmpl.oneri) {
+        payload.oneri = tmpl.oneri;
+      }
+    }
+
+    // Add custom criterias
+    if (criterias && criterias.length > 0) {
+      for (const c of criterias) {
+        payload.criterias.push([...c]);
+      }
+    }
+
+    // If no criterias specified, add default price criteria
+    if (payload.criterias.length === 0) {
+      payload.criterias = [["7", "1", "50000", "False"]]; // Default price > 1
+    }
 
     await this._initSession();
 

@@ -3,7 +3,12 @@ import { getScreenerProvider } from "~/providers/isyatirim-screener";
 import { ScreenerCriteria, ScreenerResult } from "~/types";
 
 export class Screener {
-  private _filters: Array<[string, string, string, string]> = [];
+  private _filters: Array<{
+    criteria: string;
+    min?: number;
+    max?: number;
+    required: boolean;
+  }> = [];
   private _sector: string = "";
   private _index: string = "";
   private _recommendation: string = "";
@@ -62,48 +67,13 @@ export class Screener {
     //
   }
 
-  async addFilter(
+  addFilter(
     criteria: string,
     min?: number,
     max?: number,
     required: boolean = false,
-  ): Promise<Screener> {
-    const provider = getScreenerProvider();
-    const criteriaList = await provider.getCriteria();
-
-    // Find criteria ID
-    const c = criteriaList.find(
-      (item: ScreenerCriteria) =>
-        item.name.toLowerCase() === criteria.toLowerCase() ||
-        item.id === criteria,
-    );
-
-    const id = c ? c.id : criteria; // Fallback to raw string if ID passed
-
-    // Defaults
-    const defaults =
-      Screener.CRITERIA_DEFAULTS[criteria.toLowerCase()] ||
-      Screener.CRITERIA_DEFAULTS["price"]; // Generic default?
-
-    let minVal = min;
-    let maxVal = max;
-
-    if (minVal === undefined && maxVal === undefined) {
-      // If neither provided, use defaults
-      minVal = defaults?.min;
-      maxVal = defaults?.max;
-    } else {
-      if (minVal === undefined) minVal = defaults?.min ?? -999999;
-      if (maxVal === undefined) maxVal = defaults?.max ?? 999999;
-    }
-
-    this._filters.push([
-      id,
-      minVal !== undefined ? String(minVal) : "",
-      maxVal !== undefined ? String(maxVal) : "",
-      required ? "True" : "False",
-    ]);
-
+  ): Screener {
+    this._filters.push({ criteria, min, max, required });
     return this;
   }
 
@@ -137,13 +107,63 @@ export class Screener {
    * results for any non-empty value. So we filter locally using BIST index
    * components from bist_index provider.
    */
-  async run(_template?: string): Promise<ScreenerResult[]> {
+  async run(template?: string): Promise<ScreenerResult[]> {
+    const provider = getScreenerProvider();
+    const resolvedFilters: Array<[string, string, string, string]> = [];
+
+    // Resolve filter IDs and apply defaults
+    if (this._filters.length > 0) {
+      const criteriaList = await provider.getCriteria();
+
+      for (const f of this._filters) {
+        const c = criteriaList.find(
+          (item: ScreenerCriteria) =>
+            item.name.toLowerCase() === f.criteria.toLowerCase() ||
+            item.id === f.criteria,
+        );
+
+        const id = c ? c.id : f.criteria;
+        const defaults =
+          Screener.CRITERIA_DEFAULTS[f.criteria.toLowerCase()] ||
+          Screener.CRITERIA_DEFAULTS["price"];
+
+        let minVal = f.min;
+        let maxVal = f.max;
+
+        if (minVal === undefined && maxVal === undefined) {
+          minVal = defaults?.min;
+          maxVal = defaults?.max;
+        } else {
+          if (minVal === undefined) minVal = defaults?.min ?? -999999;
+          if (maxVal === undefined) maxVal = defaults?.max ?? 999999;
+        }
+
+        resolvedFilters.push([
+          id,
+          minVal !== undefined ? String(minVal) : "",
+          maxVal !== undefined ? String(maxVal) : "",
+          f.required ? "True" : "False",
+        ]);
+      }
+    }
+
+    // Resolve sector ID
+    let sectorId = this._sector;
+    if (this._sector && !this._sector.startsWith("0")) {
+      const sectorsList = await provider.getSectors();
+      const match = sectorsList.find(
+        (s) => s.name.toLowerCase() === this._sector.toLowerCase(),
+      );
+      if (match) sectorId = match.id;
+    }
+
     // Note: Pass index=undefined to API since it doesn't support this filter
-    const results = await getScreenerProvider().screen(
-      this._filters.length > 0 ? this._filters : undefined,
-      this._sector,
+    const results = await provider.screen(
+      resolvedFilters.length > 0 ? resolvedFilters : undefined,
+      sectorId,
       "", // API doesn't support index, we filter locally
       this._recommendation,
+      template,
     );
 
     // Filter by index locally if specified
@@ -211,8 +231,16 @@ export async function screenStocks(options: {
   market_cap_max?: number;
   pe_min?: number;
   pe_max?: number;
+  pb_min?: number;
+  pb_max?: number;
   dividend_yield_min?: number;
   dividend_yield_max?: number;
+  upside_potential_min?: number;
+  upside_potential_max?: number;
+  net_margin_min?: number;
+  net_margin_max?: number;
+  roe_min?: number;
+  roe_max?: number;
   [key: string]: unknown;
 }): Promise<ScreenerResult[]> {
   const screener = new Screener();
@@ -234,11 +262,11 @@ export async function screenStocks(options: {
   }
 
   if (options.pe_min !== undefined || options.pe_max !== undefined) {
-    await screener.addFilter(
-      "pe",
-      options.pe_min as number,
-      options.pe_max as number,
-    );
+    await screener.addFilter("pe", options.pe_min, options.pe_max);
+  }
+
+  if (options.pb_min !== undefined || options.pb_max !== undefined) {
+    await screener.addFilter("pb", options.pb_min, options.pb_max);
   }
 
   if (
@@ -247,9 +275,35 @@ export async function screenStocks(options: {
   ) {
     await screener.addFilter(
       "dividend_yield",
-      options.dividend_yield_min as number,
-      options.dividend_yield_max as number,
+      options.dividend_yield_min,
+      options.dividend_yield_max,
     );
+  }
+
+  if (
+    options.upside_potential_min !== undefined ||
+    options.upside_potential_max !== undefined
+  ) {
+    await screener.addFilter(
+      "upside_potential",
+      options.upside_potential_min,
+      options.upside_potential_max,
+    );
+  }
+
+  if (
+    options.net_margin_min !== undefined ||
+    options.net_margin_max !== undefined
+  ) {
+    await screener.addFilter(
+      "net_margin",
+      options.net_margin_min,
+      options.net_margin_max,
+    );
+  }
+
+  if (options.roe_min !== undefined || options.roe_max !== undefined) {
+    await screener.addFilter("roe", options.roe_min, options.roe_max);
   }
 
   // Handle other keys matching CRITERIA_DEFAULTS suffixes like _min, _max
@@ -261,7 +315,11 @@ export async function screenStocks(options: {
         if (
           criteria === "market_cap" ||
           criteria === "pe" ||
-          criteria === "dividend_yield"
+          criteria === "pb" ||
+          criteria === "dividend_yield" ||
+          criteria === "upside_potential" ||
+          criteria === "net_margin" ||
+          criteria === "roe"
         )
           continue;
         await screener.addFilter(

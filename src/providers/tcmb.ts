@@ -133,46 +133,67 @@ export class TCMBProvider extends BaseProvider {
    */
   async getData(
     inflationType: "tufe" | "ufe" = "tufe",
-    limit?: number,
+    options: {
+      start?: string | Date;
+      end?: string | Date;
+      limit?: number;
+    } = {},
   ): Promise<InflationData[]> {
+    const { start, end, limit } = options;
     if (!TCMBProvider.INFLATION_PATHS[inflationType]) {
       throw new Error(`Invalid type: ${inflationType}. Use 'tufe' or 'ufe'`);
     }
 
     const cacheKey = `tcmb:data:${inflationType}`;
     const cached = this.cache.get(cacheKey);
+    let records: InflationData[] = [];
+
     if (cached) {
-      const data = cached as InflationData[];
-      return limit && limit > 0 ? data.slice(0, limit) : data;
-    }
+      records = cached as InflationData[];
+    } else {
+      const url =
+        TCMBProvider.BASE_URL + TCMBProvider.INFLATION_PATHS[inflationType];
+      const headers = {
+        Accept: "text/html,application/xhtml+xml",
+        "Accept-Language": "tr-TR,tr;q=0.9",
+      };
 
-    const url =
-      TCMBProvider.BASE_URL + TCMBProvider.INFLATION_PATHS[inflationType];
-    const headers = {
-      Accept: "text/html,application/xhtml+xml",
-      "Accept-Language": "tr-TR,tr;q=0.9",
-    };
+      try {
+        const response = await this.client.get(url, {
+          headers,
+          timeout: 30000,
+        });
+        const html = response.data as string;
+        records = this._parseInflationTable(html);
 
-    try {
-      const response = await this.client.get(url, { headers, timeout: 30000 });
-      const html = response.data as string;
+        if (records.length === 0) {
+          throw new DataNotAvailableError(
+            `No data available for ${inflationType}`,
+          );
+        }
 
-      const records = this._parseInflationTable(html);
-
-      if (records.length === 0) {
-        throw new DataNotAvailableError(
-          `No data available for ${inflationType}`,
+        this.cache.set(cacheKey, records, TTL.FX_RATES);
+      } catch (e) {
+        if (e instanceof DataNotAvailableError) throw e;
+        throw new APIError(
+          `Failed to fetch inflation data: ${(e as Error).message}`,
         );
       }
-
-      this.cache.set(cacheKey, records, TTL.FX_RATES);
-      return limit && limit > 0 ? records.slice(0, limit) : records;
-    } catch (e) {
-      if (e instanceof DataNotAvailableError) throw e;
-      throw new APIError(
-        `Failed to fetch inflation data: ${(e as Error).message}`,
-      );
     }
+
+    // Filter by date
+    if (start || end) {
+      const startDate = start ? new Date(start) : null;
+      const endDate = end ? new Date(end) : null;
+
+      records = records.filter((r) => {
+        if (startDate && r.date < startDate) return false;
+        if (endDate && r.date > endDate) return false;
+        return true;
+      });
+    }
+
+    return limit && limit > 0 ? records.slice(0, limit) : records;
   }
 
   /**
@@ -181,7 +202,7 @@ export class TCMBProvider extends BaseProvider {
   async getLatest(
     inflationType: "tufe" | "ufe" = "tufe",
   ): Promise<InflationData> {
-    const data = await this.getData(inflationType, 1);
+    const data = await this.getData(inflationType, { limit: 1 });
     if (data.length === 0) {
       throw new DataNotAvailableError(`No data available for ${inflationType}`);
     }

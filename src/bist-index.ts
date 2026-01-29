@@ -1,5 +1,7 @@
 import { getBistIndexProvider } from "~/providers/bist-index";
 import { getTradingViewProvider } from "~/providers/tradingview";
+import { getScannerProvider, TASignals } from "~/providers/tradingview-scanner";
+import { scan, ScanResult } from "~/scanner";
 import {
   IndexComponent,
   IndexInfo,
@@ -108,15 +110,21 @@ export class Index {
   /**
    * Current index value and info
    */
-  get info(): Promise<IndexInfo> {
+  get info(): Promise<IndexInfo & Record<string, unknown>> {
     const provider = getTradingViewProvider();
     return provider.getCurrentQuote("BIST", this.symbol).then((data) => ({
       symbol: this.symbol,
       name: INDICES[this.symbol]?.name || this.symbol,
       value: data.last,
+      last: data.last,
+      open: data.open,
+      high: data.high,
+      low: data.low,
+      close: data.close,
       change: data.change,
       changePercent: data.changePercent,
       updateTime: data.updateTime,
+      type: "index",
     }));
   }
 
@@ -162,6 +170,60 @@ export class Index {
   async componentSymbols(): Promise<string[]> {
     const comps = await this.components;
     return comps.map((c) => c.symbol);
+  }
+
+  /**
+   * Get TradingView technical analysis signals
+   */
+  async taSignals(interval: Interval = "1d"): Promise<TASignals> {
+    const provider = getScannerProvider();
+    return provider.getTASignals(`BIST:${this.symbol}`, "turkey", interval);
+  }
+
+  /**
+   * Get TA signals for all available timeframes
+   */
+  async taSignalsAllTimeframes(): Promise<
+    Record<string, TASignals | { error: string }>
+  > {
+    const intervals: Interval[] = [
+      "1m",
+      "5m",
+      "15m",
+      "30m",
+      "1h",
+      "4h",
+      "1d",
+      "1w",
+      "1mo",
+    ];
+    const result: Record<string, TASignals | { error: string }> = {};
+
+    for (const interval of intervals) {
+      try {
+        result[interval] = await this.taSignals(interval);
+      } catch (e) {
+        result[interval] = {
+          error: e instanceof Error ? e.message : String(e),
+        };
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Scan index components for technical conditions
+   */
+  async scan(
+    condition: string,
+    options: {
+      period?: Period;
+      interval?: Interval;
+    } = {},
+  ): Promise<ScanResult[]> {
+    const symbols = await this.componentSymbols();
+    return scan(symbols, condition, options.interval);
   }
 
   private calculateStartDate(period: Period, endDate: Date): Date {

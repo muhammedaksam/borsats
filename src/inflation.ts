@@ -1,4 +1,4 @@
-import { getTCMBProvider } from "~/providers/tcmb";
+import { getTCMBProvider, InflationData } from "~/providers/tcmb";
 
 /**
  * Inflation class
@@ -6,18 +6,46 @@ import { getTCMBProvider } from "~/providers/tcmb";
 export class Inflation {
   /**
    * Get latest inflation data
+   *
+   * @param inflationType 'tufe' (CPI) or 'ufe' (PPI)
    */
-  async latest(): Promise<Record<string, number>> {
+  async latest(inflationType: "tufe" | "ufe" = "tufe") {
     const provider = getTCMBProvider();
-    const tufe = await provider.getLatest("tufe");
-    const ufe = await provider.getLatest("ufe");
+    const latest = await provider.getLatest(inflationType);
 
     return {
-      tufe_yearly: tufe.yearlyInflation,
-      tufe_monthly: tufe.monthlyInflation,
-      ufe_yearly: ufe.yearlyInflation,
-      ufe_monthly: ufe.monthlyInflation,
+      year: latest.date.getFullYear(),
+      month: latest.date.getMonth() + 1,
+      value: latest.yearlyInflation,
+      monthlyChange: latest.monthlyInflation,
+      annualChange: latest.yearlyInflation,
     };
+  }
+
+  /**
+   * Get TÜFE (Consumer Price Index) data
+   */
+  async tufe(
+    options: {
+      start?: string | Date;
+      end?: string | Date;
+      limit?: number;
+    } = {},
+  ): Promise<InflationData[]> {
+    return getTCMBProvider().getData("tufe", options);
+  }
+
+  /**
+   * Get ÜFE (Producer Price Index) data
+   */
+  async ufe(
+    options: {
+      start?: string | Date;
+      end?: string | Date;
+      limit?: number;
+    } = {},
+  ): Promise<InflationData[]> {
+    return getTCMBProvider().getData("ufe", options);
   }
 
   /**
@@ -27,9 +55,14 @@ export class Inflation {
     amount: number,
     startDate: string,
     endDate: string,
-  ): Promise<number> {
+  ): Promise<{
+    initialAmount: number;
+    finalAmount: number;
+    totalInflation: number;
+    multiplier: number;
+  }> {
     const provider = getTCMBProvider();
-    // Parse dates from YYYY-MM-DD
+    // Parse dates from YYYY-MM
     const startParts = startDate.split("-").map(Number);
     const endParts = endDate.split("-").map(Number);
 
@@ -38,7 +71,7 @@ export class Inflation {
       throw new Error("Invalid date format. Use YYYY-MM");
     }
 
-    const result = await provider.calculateInflation(
+    const res = await provider.calculateInflation(
       startParts[0],
       startParts[1],
       endParts[0],
@@ -46,6 +79,11 @@ export class Inflation {
       amount,
     );
 
-    return result.finalValue;
+    return {
+      initialAmount: res.initialValue,
+      finalAmount: res.finalValue,
+      totalInflation: res.totalChange,
+      multiplier: res.finalValue / res.initialValue,
+    };
   }
 }
