@@ -184,11 +184,67 @@ export class Eurobond {
   }
 
   /**
-   * Get current yield for this bond
+   * Maturity date of the bond
    */
-  async yieldRate(): Promise<number> {
-    const bond = await getEurobondProvider().getEurobond(this.isin);
-    return bond?.bidYield || 0;
+  async maturity(): Promise<Date | null> {
+    const bond = await this.getData();
+    return bond?.maturity || null;
+  }
+
+  /**
+   * Days until maturity
+   */
+  async daysToMaturity(): Promise<number> {
+    const bond = await this.getData();
+    return bond?.daysToMaturity || 0;
+  }
+
+  /**
+   * Bond currency (USD or EUR)
+   */
+  async currency(): Promise<string> {
+    const bond = await this.getData();
+    return bond?.currency || "";
+  }
+
+  /**
+   * Bid price (buying price)
+   */
+  async bidPrice(): Promise<number | null> {
+    const bond = await this.getData();
+    return bond?.bidPrice || null;
+  }
+
+  /**
+   * Bid yield (buying yield) as percentage
+   */
+  async bidYield(): Promise<number | null> {
+    const bond = await this.getData();
+    return bond?.bidYield || null;
+  }
+
+  /**
+   * Alias for bidYield
+   */
+  async yieldRate(): Promise<number | null> {
+    const val = await this.bidYield();
+    return val === null ? 0 : val;
+  }
+
+  /**
+   * Ask price (selling price)
+   */
+  async askPrice(): Promise<number | null> {
+    const bond = await this.getData();
+    return bond?.askPrice || null;
+  }
+
+  /**
+   * Ask yield (selling yield) as percentage
+   */
+  async askYield(): Promise<number | null> {
+    const bond = await this.getData();
+    return bond?.askYield || null;
   }
 
   /**
@@ -196,5 +252,12 @@ export class Eurobond {
    */
   async getData(): Promise<EurobondData | null> {
     return getEurobondProvider().getEurobond(this.isin);
+  }
+
+  /**
+   * Alias for getData
+   */
+  async info(): Promise<EurobondData | null> {
+    return this.getData();
   }
 }

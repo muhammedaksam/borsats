@@ -3,6 +3,9 @@ import {
   getScannerProvider,
   INTERVAL_MAP,
 } from "~/providers/tradingview-scanner";
+import { TechnicalAnalyzer } from "~/technical";
+import { Ticker } from "~/ticker";
+import { Interval, Period } from "~/types";
 
 /**
  * Result of scanning a single symbol
@@ -34,7 +37,7 @@ export interface ScanResult {
 export async function scan(
   universe: string | string[],
   condition: string,
-  interval: string = "1d",
+  interval: Interval = "1d",
   limit: number = 100,
 ): Promise<ScanResult[]> {
   const scanner = new TechnicalScanner();
@@ -65,7 +68,7 @@ export class TechnicalScanner {
   private _symbols: string[] = [];
   private _conditions: string[] = [];
   private _conditionNames: Map<string, string> = new Map();
-  private _interval: string = "1d";
+  private _interval: Interval = "1d";
   private _extraColumns: string[] = [];
 
   /**
@@ -175,7 +178,7 @@ export class TechnicalScanner {
    *
    * @param interval - "1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d", "1W", "1M"
    */
-  setInterval(interval: string): TechnicalScanner {
+  setInterval(interval: Interval): TechnicalScanner {
     if (INTERVAL_MAP[interval] !== undefined) {
       this._interval = interval;
     }
@@ -252,6 +255,37 @@ export class TechnicalScanner {
               oscillators_rec: signals.oscillators.recommendation,
               ma_rec: signals.moving_averages.recommendation,
             };
+
+            // Local calculations if needed
+            const needsLocal = this._conditions.some((c) =>
+              this._requiresLocalCalc(c),
+            );
+            if (needsLocal) {
+              const history = await new Ticker(symbol).history({
+                interval: this._interval,
+                period: this._getRequiredHistoryLength(),
+              });
+              if (history.length > 0) {
+                const ta = new TechnicalAnalyzer(history);
+                if (this._conditions.some((c) => c.includes("supertrend"))) {
+                  const st = ta.supertrend();
+                  if (st.length > 0) {
+                    data.supertrend = st[st.length - 1].supertrend;
+                    data.supertrend_direction = st[st.length - 1].direction;
+                  }
+                }
+                if (
+                  this._conditions.some(
+                    (c) => c.includes("t3") || c.includes("tillson"),
+                  )
+                ) {
+                  const t3 = ta.tilsonT3();
+                  if (t3.length > 0) {
+                    data.t3 = t3[t3.length - 1];
+                  }
+                }
+              }
+            }
 
             // Evaluate conditions
             const conditionsMet: string[] = [];
@@ -358,6 +392,18 @@ export class TechnicalScanner {
     if (!isNaN(parsed)) return parsed;
 
     return null;
+  }
+
+  private _requiresLocalCalc(condition: string): boolean {
+    const localIndicators = ["supertrend", "t3", "tillson"];
+    return localIndicators.some((ind) => condition.toLowerCase().includes(ind));
+  }
+
+  private _getRequiredHistoryLength(): Period {
+    // Return a safe period for local calcs
+    const interval = this._interval;
+    if (interval.endsWith("m") || interval.endsWith("h")) return "1d";
+    return "1y";
   }
 
   /**

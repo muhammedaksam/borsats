@@ -20,6 +20,7 @@ export class Portfolio {
       shares: number;
       cost?: number;
       assetType?: "stock" | "fx" | "crypto" | "fund";
+      purchaseDate?: Date | string;
     },
   ): Portfolio {
     const assetType = options.assetType || this.detectAssetType(symbol);
@@ -29,6 +30,7 @@ export class Portfolio {
       assetType,
       shares: options.shares,
       costPerShare: options.cost,
+      purchaseDate: options.purchaseDate,
     });
 
     return this;
@@ -42,6 +44,7 @@ export class Portfolio {
     options: {
       shares?: number;
       cost?: number;
+      purchaseDate?: Date | string;
     },
   ): Portfolio {
     const holding = this.holdings.get(symbol);
@@ -54,6 +57,9 @@ export class Portfolio {
     }
     if (options.cost !== undefined) {
       holding.costPerShare = options.cost;
+    }
+    if (options.purchaseDate !== undefined) {
+      holding.purchaseDate = options.purchaseDate;
     }
 
     return this;
@@ -197,6 +203,7 @@ export class Portfolio {
         shares: holding.shares,
         cost: holding.costPerShare,
         assetType: holding.assetType,
+        purchaseDate: holding.purchaseDate,
       });
     }
 
@@ -335,6 +342,12 @@ export class Portfolio {
             date: new Date(d.date),
             close: d.price,
           }));
+        }
+
+        // Filter by purchase date if available
+        if (h.purchaseDate) {
+          const pDt = new Date(h.purchaseDate);
+          hist = hist.filter((d) => d.date >= pDt);
         }
         if (hist.length > 0) {
           histories.set(h.symbol, hist);

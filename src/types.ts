@@ -38,6 +38,11 @@ export type Interval =
   | "1mo";
 
 /**
+ * Valid fund types for TEFAS
+ */
+export type FundType = "YAT" | "EMK";
+
+/**
  * OHLCV (Open, High, Low, Close, Volume) data structure
  */
 export interface OHLCVData {
@@ -284,6 +289,7 @@ export interface Holding {
   weight?: number;
   pnl?: number;
   pnlPct?: number;
+  purchaseDate?: Date | string;
 }
 
 /**

@@ -2,6 +2,7 @@ import https from "https";
 
 import { APIError, DataNotAvailableError } from "~/exceptions";
 import { BaseProvider } from "~/providers/base";
+import { FundType } from "~/types";
 import { TTL } from "~/utils/helpers";
 
 export interface FundDetail {
@@ -145,9 +146,13 @@ export class TEFASProvider extends BaseProvider {
   /**
    * Get detailed information about a fund.
    */
-  async getFundDetail(fundCode: string): Promise<FundDetail> {
+  async getFundDetail(
+    fundCode: string,
+    fundType: FundType = "YAT",
+  ): Promise<FundDetail> {
     const code = fundCode.toUpperCase();
-    const cacheKey = `tefas:detail:${code}`;
+    const type = fundType.toUpperCase();
+    const cacheKey = `tefas:detail:${code}:${type}`;
 
     const cached = this.cache.get(cacheKey);
     if (cached) return cached as FundDetail;
@@ -249,9 +254,11 @@ export class TEFASProvider extends BaseProvider {
     period?: string;
     start?: Date;
     end?: Date;
+    fundType?: FundType;
   }): Promise<FundHistoryItem[]> {
-    const { fundCode, period = "1mo", start, end } = options;
+    const { fundCode, period = "1mo", start, end, fundType = "YAT" } = options;
     const code = fundCode.toUpperCase();
+    const type = fundType;
     const endDt = end || new Date();
     let startDt = start;
 
@@ -273,7 +280,7 @@ export class TEFASProvider extends BaseProvider {
 
     const startStr = this._formatDateISO(startDt!);
     const endStr = this._formatDateISO(endDt);
-    const cacheKey = `tefas:history:${code}:${startStr}:${endStr}`;
+    const cacheKey = `tefas:history:${code}:${type}:${startStr}:${endStr}`;
 
     const cached = this.cache.get(cacheKey);
     if (cached) return cached as FundHistoryItem[];
@@ -284,9 +291,9 @@ export class TEFASProvider extends BaseProvider {
 
     let df: FundHistoryItem[] = [];
     if (diffDays > TEFASProvider.MAX_CHUNK_DAYS) {
-      df = await this._getHistoryChunked(code, startDt!, endDt);
+      df = await this._getHistoryChunked(code, startDt!, endDt, type);
     } else {
-      df = await this._fetchHistoryChunk(code, startDt!, endDt);
+      df = await this._fetchHistoryChunk(code, startDt!, endDt, type);
     }
 
     this.cache.set(cacheKey, df, TTL.OHLCV_HISTORY);
@@ -300,20 +307,22 @@ export class TEFASProvider extends BaseProvider {
     fundCode: string,
     start?: Date,
     end?: Date,
+    fundType: FundType = "YAT",
   ): Promise<AllocationItem[]> {
     const code = fundCode.toUpperCase();
+    const type = fundType;
     const endDt = end || new Date();
     const startDt =
       start || new Date(endDt.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    const cacheKey = `tefas:allocation:${code}:${this._formatDateISO(startDt)}:${this._formatDateISO(endDt)}`;
+    const cacheKey = `tefas:allocation:${code}:${type}:${this._formatDateISO(startDt)}:${this._formatDateISO(endDt)}`;
     const cached = this.cache.get(cacheKey);
     if (cached) return cached as AllocationItem[];
 
     const url = `${TEFASProvider.BASE_URL}/BindHistoryAllocation`;
 
     const body = new URLSearchParams({
-      fontip: "YAT",
+      fontip: type,
       sfontur: "",
       fonkod: code,
       fongrup: "",
@@ -385,8 +394,9 @@ export class TEFASProvider extends BaseProvider {
     period?: string;
     start?: Date;
     end?: Date;
+    fundType?: FundType;
   }): Promise<AllocationItem[]> {
-    const { fundCode, period = "1mo", start, end } = options;
+    const { fundCode, period = "1mo", start, end, fundType = "YAT" } = options;
 
     let endDt = end || new Date();
     let startDt: Date;
@@ -412,7 +422,7 @@ export class TEFASProvider extends BaseProvider {
       startDt = new Date(endDt.getTime() - maxDays * 24 * 60 * 60 * 1000);
     }
 
-    return this.getAllocation(fundCode, startDt, endDt);
+    return this.getAllocation(fundCode, startDt, endDt, fundType);
   }
 
   /**
@@ -486,6 +496,7 @@ export class TEFASProvider extends BaseProvider {
     code: string,
     start: Date,
     end: Date,
+    type: FundType = "YAT",
   ): Promise<FundHistoryItem[]> {
     const allRecords: FundHistoryItem[] = [];
     let chunkStart = new Date(start);
@@ -498,16 +509,23 @@ export class TEFASProvider extends BaseProvider {
           end.getTime(),
         ),
       );
-
       try {
         if (allRecords.length > 0) {
           await new Promise((r) => setTimeout(r, 300)); // Rate limit buffer
         }
 
-        const chunk = await this._fetchHistoryChunk(code, chunkStart, chunkEnd);
+        const chunk = await this._fetchHistoryChunk(
+          code,
+          chunkStart,
+          chunkEnd,
+          type,
+        );
         allRecords.push(...chunk);
       } catch (err) {
-        // Continue if chunk fails (might be empty)
+        if (err instanceof APIError && (err as Error).message.includes("WAF")) {
+          break; // Stop fetching older data if WAF blocked
+        }
+        // Continue if chunk fails (might be empty/DataNotAvailable)
       }
 
       chunkStart = new Date(chunkEnd.getTime() + 24 * 60 * 60 * 1000); // +1 day
@@ -530,11 +548,12 @@ export class TEFASProvider extends BaseProvider {
     code: string,
     start: Date,
     end: Date,
+    type: FundType = "YAT",
   ): Promise<FundHistoryItem[]> {
     const url = `${TEFASProvider.BASE_URL}/BindHistoryInfo`;
 
     const body = new URLSearchParams({
-      fontip: "YAT",
+      fontip: type,
       sfontur: "",
       fonkod: code,
       fongrup: "",

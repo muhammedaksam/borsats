@@ -1,3 +1,4 @@
+import { riskFreeRate } from "~/bond";
 import { TechnicalAnalyzer } from "~/technical";
 import { Ticker } from "~/ticker";
 import { Interval, OHLCVData, Period } from "~/types";
@@ -36,6 +37,11 @@ export interface Trade {
   duration?: number; // days
 }
 
+export type BacktestSummaryData = Omit<
+  BacktestResult,
+  "equityCurve" | "drawdownCurve" | "buyHoldCurve" | "toObject" | "summary"
+>;
+
 export interface BacktestResult {
   symbol: string;
   period: string;
@@ -53,8 +59,12 @@ export interface BacktestResult {
   winningTrades: number;
   losingTrades: number;
   winRate: number;
-  profitFactor: number;
+  profitFactor: number | string;
   avgTrade: number;
+  avgWinningTrade: number;
+  avgLosingTrade: number;
+  maxConsecutiveWins: number;
+  maxConsecutiveLosses: number;
   maxDrawdown: number;
   maxDrawdownDuration: number; // days
   sharpeRatio: number;
@@ -67,17 +77,23 @@ export interface BacktestResult {
   equityCurve: { date: Date; value: number }[];
   drawdownCurve: { date: Date; value: number }[];
   buyHoldCurve: { date: Date; value: number }[];
+
+  // Methods
+  toObject(): BacktestSummaryData;
+  summary(): string;
 }
 
 export class BacktestEngine {
+  public static readonly WARMUP_PERIOD = 50;
+
   private symbol: string;
   private strategy: StrategyFunc;
   private period: Period;
   private interval: Interval;
   private capital: number;
   private commission: number;
+  private slippage: number;
   private indicators: string[];
-  private warmupPeriod = 50;
 
   constructor(
     symbol: string,
@@ -87,15 +103,17 @@ export class BacktestEngine {
       interval?: Interval;
       capital?: number;
       commission?: number;
+      slippage?: number;
       indicators?: string[];
     } = {},
   ) {
-    this.symbol = symbol;
+    this.symbol = symbol.toUpperCase();
     this.strategy = strategy;
     this.period = options.period || "1y";
     this.interval = options.interval || "1d";
     this.capital = options.capital || 100000;
     this.commission = options.commission || 0.001;
+    this.slippage = options.slippage || 0;
     this.indicators = options.indicators || ["rsi", "sma_20", "ema_12", "macd"];
   }
 
@@ -126,10 +144,11 @@ export class BacktestEngine {
     const bhValues: { date: Date; value: number }[] = [];
 
     // Buy & hold tracking
-    const initialPrice = sorted[this.warmupPeriod].close;
+    const warmup = Math.min(BacktestEngine.WARMUP_PERIOD, fullData.length - 1);
+    const initialPrice = sorted[warmup].close;
     const bhShares = this.capital / initialPrice;
 
-    for (let i = this.warmupPeriod; i < fullData.length; i++) {
+    for (let i = warmup; i < fullData.length; i++) {
       const item = fullData[i];
       const candle: Candle = {
         timestamp: item.date,
@@ -234,11 +253,11 @@ export class BacktestEngine {
       currentTrade.duration = durMs / (1000 * 60 * 60 * 24);
 
       trades.push(currentTrade);
-      cash = exitVal - exitComm; // Update cash for final equity check
-      equityValues[equityValues.length - 1].value = cash; // Update last equity point
+      cash = exitVal - exitComm;
+      equityValues[equityValues.length - 1].value = cash;
     }
 
-    // Stats
+    // Performance Stats
     const finalEquity =
       equityValues.length > 0
         ? equityValues[equityValues.length - 1].value
@@ -253,13 +272,29 @@ export class BacktestEngine {
     const grossProfit = wins.reduce((s, t) => s + (t.profit || 0), 0);
     const grossLoss = Math.abs(losses.reduce((s, t) => s + (t.profit || 0), 0));
     const profitFactor =
-      grossLoss === 0
-        ? grossProfit > 0
-          ? Infinity
-          : 0
-        : grossProfit / grossLoss;
+      grossLoss === 0 ? (grossProfit > 0 ? "inf" : 0) : grossProfit / grossLoss;
 
     const avgTrade = trades.length > 0 ? netProfit / trades.length : 0;
+    const avgWinningTrade = wins.length > 0 ? grossProfit / wins.length : 0;
+    const avgLosingTrade = losses.length > 0 ? -grossLoss / losses.length : 0;
+
+    // Consecutive Wins/Losses
+    let maxConsecutiveWins = 0;
+    let maxConsecutiveLosses = 0;
+    let currentWins = 0;
+    let currentLosses = 0;
+
+    for (const t of trades) {
+      if ((t.profit || 0) > 0) {
+        currentWins++;
+        currentLosses = 0;
+        maxConsecutiveWins = Math.max(maxConsecutiveWins, currentWins);
+      } else {
+        currentLosses++;
+        currentWins = 0;
+        maxConsecutiveLosses = Math.max(maxConsecutiveLosses, currentLosses);
+      }
+    }
 
     // Drawdown
     let maxDD = 0;
@@ -268,13 +303,15 @@ export class BacktestEngine {
 
     for (const p of equityValues) {
       if (p.value > peak) peak = p.value;
-      const dd = (peak - p.value) / peak; // fraction
+      const dd = peak === 0 ? 0 : (peak - p.value) / peak;
       if (dd > maxDD) maxDD = dd;
       ddCurve.push({ date: p.date, value: dd * 100 });
     }
 
-    // Sharpe (simplified, daily returns, ignore risk free for now or assume 0)
-    // Daily returns
+    // Risk-Free Rate and Sharpe/Sortino
+    const rfAnnual = (await riskFreeRate()) || 0.3;
+    const rfDaily = rfAnnual / 252;
+
     const returns: number[] = [];
     for (let i = 1; i < equityValues.length; i++) {
       const prev = equityValues[i - 1].value;
@@ -282,29 +319,30 @@ export class BacktestEngine {
       if (prev !== 0) returns.push((curr - prev) / prev);
     }
 
+    const excessReturns = returns.map((r) => r - rfDaily);
     let sharpe = 0;
-    if (returns.length > 0) {
-      const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+    if (excessReturns.length > 0) {
+      const mean =
+        excessReturns.reduce((a, b) => a + b, 0) / excessReturns.length;
       const variance =
-        returns.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / returns.length;
+        excessReturns.reduce((a, b) => a + Math.pow(b - mean, 2), 0) /
+        excessReturns.length;
       const std = Math.sqrt(variance);
       if (std !== 0) sharpe = (mean / std) * Math.sqrt(252);
     }
 
-    // Sortino
     let sortino = 0;
-    if (returns.length > 0) {
-      const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
-      const negativeReturns = returns.filter((r) => r < 0);
-      if (negativeReturns.length > 0) {
-        const negVariance =
-          negativeReturns.reduce((a, b) => a + Math.pow(b - 0, 2), 0) /
-          negativeReturns.length;
-        const downsideStd = Math.sqrt(negVariance);
-        if (downsideStd !== 0) sortino = (mean / downsideStd) * Math.sqrt(252);
-      } else {
-        sortino = mean > 0 ? Infinity : 0;
-      }
+    const negativeReturns = excessReturns.filter((r) => r < 0);
+    if (negativeReturns.length > 0) {
+      const mean =
+        excessReturns.reduce((a, b) => a + b, 0) / excessReturns.length;
+      const negVariance =
+        negativeReturns.reduce((a, b) => a + Math.pow(b - 0, 2), 0) /
+        negativeReturns.length;
+      const downsideStd = Math.sqrt(negVariance);
+      if (downsideStd !== 0) sortino = (mean / downsideStd) * Math.sqrt(252);
+    } else {
+      sortino = sharpe > 0 ? Infinity : 0;
     }
 
     // Max DD Duration
@@ -315,37 +353,34 @@ export class BacktestEngine {
       if (p.value > ddPeak) {
         ddPeak = p.value;
         currentDDDuration = 0;
-      } else if (p.value < ddPeak) {
+      } else {
         currentDDDuration++;
-        if (currentDDDuration > maxDDDuration)
-          maxDDDuration = currentDDDuration;
+        maxDDDuration = Math.max(maxDDDuration, currentDDDuration);
       }
     }
 
-    // Calmar
+    // Calmar (Annualized return / max drawdown)
+    const tradingDays = equityValues.length;
+    const annualReturn =
+      tradingDays > 0 ? netProfitPct * (252 / tradingDays) : 0;
     const calmar =
       maxDD > 0
-        ? netProfitPct / (maxDD * 100)
-        : netProfitPct > 0
+        ? annualReturn / (maxDD * 100)
+        : annualReturn > 0
           ? Infinity
           : 0;
 
-    // Buy & Hold Return
+    // Buy & Hold
     const bhFinal = bhValues[bhValues.length - 1].value;
     const bhReturn = ((bhFinal - this.capital) / this.capital) * 100;
     const vsBH = netProfitPct - bhReturn;
 
-    // Get function name safely
     let sName = "strategy";
     try {
-      if (this.strategy && this.strategy.name) {
-        sName = this.strategy.name;
-      }
-    } catch {
-      // ignore
-    }
+      if (this.strategy && this.strategy.name) sName = this.strategy.name;
+    } catch {}
 
-    return {
+    const resultStats = {
       symbol: this.symbol,
       period: this.period,
       interval: this.interval,
@@ -362,17 +397,71 @@ export class BacktestEngine {
       winRate,
       profitFactor,
       avgTrade,
+      avgWinningTrade,
+      avgLosingTrade,
+      maxConsecutiveWins,
+      maxConsecutiveLosses,
       maxDrawdown: maxDD * 100,
       maxDrawdownDuration: maxDDDuration,
       sharpeRatio: sharpe,
-      sortinoRatio: sortino,
-      calmarRatio: calmar,
+      sortinoRatio: sortino as number,
+      calmarRatio: calmar as number,
       buyHoldReturn: bhReturn,
       vsBuyHold: vsBH,
       equityCurve: equityValues,
       drawdownCurve: ddCurve,
       buyHoldCurve: bhValues,
     };
+
+    return {
+      ...resultStats,
+      toObject(): BacktestSummaryData {
+        const {
+          equityCurve: _ec,
+          drawdownCurve: _dc,
+          buyHoldCurve: _bc,
+          toObject: _to,
+          summary: _sm,
+          ...data
+        } = this as unknown as BacktestResult;
+        return data as BacktestSummaryData;
+      },
+      summary() {
+        const d = this.toObject();
+        const lines = [
+          "=".repeat(60),
+          `BACKTEST RESULTS: ${d.symbol} (${d.strategyName})`,
+          "=".repeat(60),
+          `Period: ${d.period} | Interval: ${d.interval}`,
+          `Initial Capital: ${d.initialCapital.toLocaleString()} TL`,
+          `Commission: ${(d.commission * 100).toFixed(2)}%`,
+          "",
+          "--- PERFORMANCE ---",
+          `Net Profit: ${d.netProfit.toLocaleString()} TL (${d.netProfitPct > 0 ? "+" : ""}${d.netProfitPct.toFixed(2)}%)`,
+          `Final Equity: ${d.finalEquity.toLocaleString()} TL`,
+          `Buy & Hold: ${d.buyHoldReturn.toFixed(2)}%`,
+          `vs B&H: ${d.vsBuyHold > 0 ? "+" : ""}${d.vsBuyHold.toFixed(2)}%`,
+          "",
+          "--- TRADE STATISTICS ---",
+          `Total Trades: ${d.totalTrades}`,
+          `Winning: ${d.winningTrades} | Losing: ${d.losingTrades}`,
+          `Win Rate: ${d.winRate.toFixed(1)}%`,
+          `Profit Factor: ${d.profitFactor}`,
+          `Avg Trade: ${d.avgTrade.toLocaleString()} TL`,
+          `Avg Winner: ${d.avgWinningTrade.toLocaleString()} TL | Avg Loser: ${d.avgLosingTrade.toLocaleString()} TL`,
+          `Max Consecutive Wins: ${d.maxConsecutiveWins} | Losses: ${d.maxConsecutiveLosses}`,
+          "",
+          "--- RISK METRICS ---",
+          `Sharpe Ratio: ${d.sharpeRatio !== null ? d.sharpeRatio.toFixed(2) : "N/A"}`,
+          `Sortino Ratio: ${d.sortinoRatio !== null ? d.sortinoRatio.toFixed(2) : "N/A"}`,
+          `Calmar Ratio: ${d.calmarRatio !== null ? d.calmarRatio.toFixed(2) : "N/A"}`,
+          `Max Drawdown: ${d.maxDrawdown.toFixed(2)}%`,
+          `Max DD Duration: ${d.maxDrawdownDuration} days`,
+          "=".repeat(60),
+        ];
+        return lines.join("\n");
+      },
+    } as BacktestResult;
   }
 
   private async _calculateIndicators(
@@ -497,4 +586,28 @@ export class BacktestEngine {
       data[i][key] = values[i];
     }
   }
+}
+
+/**
+ * Convenience alias for BacktestEngine
+ */
+export const Backtest = BacktestEngine;
+
+/**
+ * Convenience function for running a backtest
+ */
+export async function backtest(
+  symbol: string,
+  strategy: StrategyFunc,
+  options: {
+    period?: Period;
+    interval?: Interval;
+    capital?: number;
+    commission?: number;
+    slippage?: number;
+    indicators?: string[];
+  } = {},
+): Promise<BacktestResult> {
+  const engine = new BacktestEngine(symbol, strategy, options);
+  return engine.run();
 }

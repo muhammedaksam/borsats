@@ -33,7 +33,7 @@ describe("TCMBProvider", () => {
     it(
       "should fetch TÜFE data",
       resilientTest(async () => {
-        const data = await provider.getData("tufe", 5);
+        const data = await provider.getData("tufe", { limit: 5 });
 
         expect(Array.isArray(data)).toBe(true);
         expect(data.length).toBeGreaterThan(0);
@@ -45,7 +45,7 @@ describe("TCMBProvider", () => {
     it(
       "should fetch ÜFE data",
       resilientTest(async () => {
-        const data = await provider.getData("ufe", 5);
+        const data = await provider.getData("ufe", { limit: 5 });
 
         expect(Array.isArray(data)).toBe(true);
         expect(data.length).toBeGreaterThan(0);
