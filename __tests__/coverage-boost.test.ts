@@ -118,13 +118,16 @@ describe("Coverage Boost Tests", () => {
   });
 
   describe("Inflation Coverage", () => {
-    test("tufe and ufe with options", async () => {
-      const inf = new Inflation();
-      const data1 = await inf.tufe({ limit: 2 });
-      const data2 = await inf.ufe({ limit: 2 });
-      expect(data1.length).toBeLessThanOrEqual(2);
-      expect(data2.length).toBeLessThanOrEqual(2);
-    });
+    test(
+      "tufe and ufe with options",
+      resilientTest(async () => {
+        const inf = new Inflation();
+        const data1 = await inf.tufe({ limit: 2 });
+        const data2 = await inf.ufe({ limit: 2 });
+        expect(data1.length).toBeLessThanOrEqual(2);
+        expect(data2.length).toBeLessThanOrEqual(2);
+      }),
+    );
   });
 
   describe("Bond/Eurobond Coverage", () => {
