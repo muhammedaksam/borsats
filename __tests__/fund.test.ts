@@ -243,4 +243,156 @@ describe("Fund Max Coverage", () => {
     const risk = await fund.riskMetrics();
     expect(risk.annualizedVolatility).toBeNaN(); // Check implementations default
   });
+
+  test("Fund.detail getter returns same as info", async () => {
+    const fund = new Fund("TEST");
+    mockProvider.mockProfile = {
+      fund_code: "TEST",
+      name: "Test Fund",
+      category: "Hisse Senedi Fonu",
+      price: 100,
+    } as Partial<FundDetail>;
+
+    const detail = await fund.detail;
+    expect(detail).toBeDefined();
+    expect(detail.fund_code).toBe("TEST");
+  });
+
+  test("Fund.sharpeRatio delegates to riskMetrics", async () => {
+    const fund = new Fund("TEST");
+
+    const history: FundHistoryItem[] = [];
+    for (let i = 0; i < 260; i++) {
+      history.push({
+        date: new Date(2023, 0, i + 1),
+        price: 10 + i * 0.1 + Math.sin(i / 5),
+        fundSize: 1000000,
+        investors: 100,
+      });
+    }
+    mockProvider.mockHistory = history;
+
+    const sharpe = await fund.sharpeRatio("1y", 10);
+    expect(typeof sharpe).toBe("number");
+    expect(isNaN(sharpe)).toBe(false);
+  });
+
+  test("Fund.managementFee catch path returns null on error", async () => {
+    const fund = new Fund("TEST", "YAT");
+
+    jest
+      .spyOn(mockProvider, "getManagementFees")
+      .mockRejectedValue(new Error("API Error"));
+
+    const fee = await fund.managementFee;
+    expect(fee).toBeNull();
+  });
+
+  test("Fund.managementFee returns null when fund not found in list", async () => {
+    const fund = new Fund("NOTFOUND", "YAT");
+
+    jest.spyOn(mockProvider, "getManagementFees").mockResolvedValue([
+      {
+        fund_code: "OTHER",
+        applied_fee: 2.0,
+        name: "Other",
+        fund_category: "Test",
+        founder_code: "TST",
+        prospectus_fee: 3.0,
+        max_expense_ratio: 4.0,
+        annual_return: null,
+      },
+    ]);
+
+    const fee = await fund.managementFee;
+    expect(fee).toBeNull();
+  });
+
+  test("Sortino ratio is Infinity when no negative returns", async () => {
+    const fund = new Fund("TEST");
+
+    // Monotonically increasing prices → no negative returns
+    const history: FundHistoryItem[] = [];
+    for (let i = 0; i < 260; i++) {
+      history.push({
+        date: new Date(2023, 0, i + 1),
+        price: 10 + i * 0.5,
+        fundSize: 1000000,
+        investors: 100,
+      });
+    }
+    mockProvider.mockHistory = history;
+
+    const risk = await fund.riskMetrics("1y", 0);
+    expect(risk.sortinoRatio).toBe(Infinity);
+  });
+
+  test("Fund detectFundType falls back to EMK when YAT returns empty", async () => {
+    const mockFn = jest.spyOn(mockProvider, "getHistory");
+    let callCount = 0;
+    mockFn.mockImplementation(async (opts: unknown) => {
+      const options = opts as { fundType: string };
+      callCount++;
+      if (options.fundType === "YAT") return []; // Empty for YAT
+      if (options.fundType === "EMK")
+        return [
+          { date: new Date(), price: 100, fundSize: 0, investors: 0 },
+        ];
+      return [];
+    });
+
+    const fund = new Fund("EMKFUND");
+    const type = await fund.fundType;
+    expect(type).toBe("EMK");
+    expect(callCount).toBeGreaterThanOrEqual(2);
+  });
+
+  test("Fund detectFundType defaults to YAT when both fail", async () => {
+    const mockFn = jest.spyOn(mockProvider, "getHistory");
+    mockFn.mockImplementation(async () => []);
+
+    const fund = new Fund("UNKNOWN");
+    const type = await fund.fundType;
+    expect(type).toBe("YAT"); // Default
+  });
+
+  test("Fund detectFundType early return when type already set", async () => {
+    const fund = new Fund("TEST", "YAT");
+    const type = await fund.fundType;
+    expect(type).toBe("YAT");
+    // Second call should return cached
+    const type2 = await fund.fundType;
+    expect(type2).toBe("YAT");
+  });
 });
+
+describe("Fund module-level exports", () => {
+  let mockProvider: MockTEFAS;
+
+  beforeEach(() => {
+    mockProvider = new MockTEFAS();
+    (getTEFASProvider as jest.Mock).mockReturnValue(mockProvider);
+  });
+
+  test("searchFunds delegates to provider", async () => {
+    const spy = jest.spyOn(mockProvider, "search");
+    await searchFunds("test");
+    expect(spy).toHaveBeenCalledWith("test");
+  });
+
+  test("screenFunds delegates to provider", async () => {
+    const spy = jest.spyOn(mockProvider, "screenFunds");
+    await screenFunds({ minReturn: 10 });
+    expect(spy).toHaveBeenCalledWith({ minReturn: 10 });
+  });
+
+  test("compareFunds with all null results returns empty", async () => {
+    jest.spyOn(mockProvider, "getFundDetail").mockRejectedValue(new Error("fail"));
+
+    const result = await compareFunds(["NONEXIST1", "NONEXIST2"]);
+    expect(result.funds).toEqual([]);
+    expect(result.rankings).toEqual({});
+    expect(result.summary).toEqual({});
+  });
+});
+

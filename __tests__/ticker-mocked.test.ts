@@ -8,6 +8,7 @@ import * as tvProvider from "~/providers/tradingview";
 import * as isyProvider from "~/providers/isyatirim";
 import * as kapProvider from "~/providers/kap";
 import * as hedefProvider from "~/providers/hedeffiyat";
+import * as scannerProvider from "~/providers/tradingview-scanner";
 
 // --- Synthetic OHLCV data for deterministic tests ---
 function makeOHLCV(n: number) {
@@ -129,6 +130,19 @@ describe("Ticker (Mocked) — New Method Coverage", () => {
     }),
   };
 
+  const mockTASignals = {
+    symbol: "TEST",
+    exchange: "BIST",
+    interval: "1d",
+    summary: { recommendation: "BUY", buy: 15, sell: 3, neutral: 8 },
+    moving_averages: { recommendation: "STRONG_BUY", buy: 12, sell: 0, neutral: 0 },
+    oscillators: { recommendation: "BUY", buy: 3, sell: 3, neutral: 8 },
+  };
+
+  const mockScannerProvider = {
+    getTASignals: jest.fn().mockResolvedValue(mockTASignals),
+  };
+
   beforeEach(() => {
     jest
       .spyOn(tvProvider, "getTradingViewProvider")
@@ -142,6 +156,9 @@ describe("Ticker (Mocked) — New Method Coverage", () => {
     jest
       .spyOn(hedefProvider, "getHedefFiyatProvider")
       .mockReturnValue(mockHedefProvider as unknown as ReturnType<typeof hedefProvider.getHedefFiyatProvider>);
+    jest
+      .spyOn(scannerProvider, "getScannerProvider")
+      .mockReturnValue(mockScannerProvider as unknown as ReturnType<typeof scannerProvider.getScannerProvider>);
   });
 
   afterEach(() => {
@@ -459,5 +476,123 @@ describe("Ticker (Mocked) — New Method Coverage", () => {
       const hist = await ticker.history({ period });
       expect(hist).toBeDefined();
     }
+  });
+
+  test("taSignals calls scanner provider", async () => {
+    const ticker = new Ticker("TEST");
+    const signals = await ticker.taSignals();
+    expect(signals.summary.recommendation).toBe("BUY");
+    expect(mockScannerProvider.getTASignals).toHaveBeenCalledWith(
+      "BIST:TEST",
+      "turkey",
+      "1d",
+    );
+  });
+
+  test("taSignals with custom interval", async () => {
+    const ticker = new Ticker("TEST");
+    await ticker.taSignals("1h");
+    expect(mockScannerProvider.getTASignals).toHaveBeenCalledWith(
+      "BIST:TEST",
+      "turkey",
+      "1h",
+    );
+  });
+
+  test("taSignalsAllTimeframes returns results for all intervals", async () => {
+    const ticker = new Ticker("TEST");
+    const result = await ticker.taSignalsAllTimeframes();
+    const intervals = ["1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w", "1mo"];
+    for (const interval of intervals) {
+      expect(result[interval]).toBeDefined();
+      expect((result[interval] as { summary: { recommendation: string } }).summary.recommendation).toBe("BUY");
+    }
+  });
+
+  test("taSignalsAllTimeframes captures errors per interval", async () => {
+    // Make scanner fail for all calls
+    mockScannerProvider.getTASignals.mockRejectedValue(new Error("scanner down"));
+    const ticker = new Ticker("TEST");
+    const result = await ticker.taSignalsAllTimeframes();
+    for (const key of Object.keys(result)) {
+      expect((result[key] as { error: string }).error).toBe("scanner down");
+    }
+    // Restore
+    mockScannerProvider.getTASignals.mockResolvedValue(mockTASignals);
+  });
+
+  test("quarterlyCashflow getter", async () => {
+    const ticker = new Ticker("TEST");
+    const cf = await ticker.quarterlyCashflow;
+    expect(cf).toBeDefined();
+    expect(mockIsYProvider.getFinancialStatements).toHaveBeenCalledWith(
+      "TEST",
+      "cashflow",
+      true,
+    );
+  });
+
+  test("recommendationsSummary returns zeros on error", async () => {
+    mockHedefProvider.getRecommendationsSummary.mockRejectedValueOnce(
+      new Error("fail"),
+    );
+    const ticker = new Ticker("TEST");
+    const recs = await ticker.recommendationsSummary;
+    expect(recs).toEqual({
+      strongBuy: 0,
+      buy: 0,
+      hold: 0,
+      sell: 0,
+      strongSell: 0,
+    });
+  });
+
+  test("_unadjustPrices applies split factor to pre-split bars", async () => {
+    // Create OHLCV data with known values around the split date
+    const splitDate = new Date(2024, 1, 15); // Feb 15
+    const preSplitData = Array.from({ length: 10 }, (_, i) => ({
+      date: new Date(2024, 1, i + 1), // Feb 1-10 (before split)
+      open: 100,
+      high: 110,
+      low: 90,
+      close: 105,
+      volume: 50000,
+    }));
+    const postSplitData = Array.from({ length: 5 }, (_, i) => ({
+      date: new Date(2024, 1, 16 + i), // Feb 16-20 (after split)
+      open: 50,
+      high: 55,
+      low: 45,
+      close: 52,
+      volume: 100000,
+    }));
+    mockTVProvider.getHistory.mockResolvedValueOnce([...preSplitData, ...postSplitData]);
+
+    // Split: 50% bonus = 2:1 split
+    mockIsYProvider.getCapitalIncreases.mockResolvedValueOnce([
+      {
+        date: splitDate,
+        capital: 100,
+        rightsIssue: 0,
+        bonusFromCapital: 100,
+        bonusFromDividend: 0,
+      },
+    ]);
+
+    const ticker = new Ticker("TEST");
+    const hist = await ticker.history({ period: "1mo", adjust: false });
+    // Pre-split bars should have prices multiplied by 2 (1 + 100/100)
+    expect(hist[0].close).toBeCloseTo(210, 0); // 105 * 2
+    // Post-split bars should be unchanged
+    expect(hist[10].close).toBe(52);
+  });
+
+  test("technicals() returns a TechnicalAnalyzer", async () => {
+    const ticker = new Ticker("TEST");
+    const ta = await ticker.technicals();
+    expect(ta).toBeDefined();
+    // Should be able to call methods on it
+    const sma = ta.sma(20);
+    expect(sma.length).toBe(MOCK_OHLCV.length);
   });
 });
