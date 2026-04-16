@@ -120,7 +120,7 @@ export class IsYatirimProvider extends BaseProvider {
         const fallbackData = await this._fetchFallbackQuote(cleanSymbol);
         this.cache.set(cacheKey, fallbackData, TTL.FX_RATES);
         return fallbackData;
-      } catch (fallbackError) {
+      } catch {
         // If it was a TickerNotFoundError originally and fallback also failed, it's really not found
         if (e instanceof TickerNotFoundError) {
           throw e;
@@ -738,7 +738,7 @@ export class IsYatirimProvider extends BaseProvider {
       if (setCookie && Array.isArray(setCookie)) {
         this.cookies = setCookie.map((c) => c.split(";")[0]).join("; ");
       }
-    } catch (err) {
+    } catch {
       // ignore
     }
   }
