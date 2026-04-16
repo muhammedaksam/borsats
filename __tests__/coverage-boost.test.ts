@@ -26,6 +26,7 @@ import {
 import { TechnicalScanner } from "~/scanner";
 import { StudySession, TradingViewStream } from "~/stream";
 import { Interval } from "~/types";
+import { resilientTest } from "./helpers/network-utils";
 
 describe("Coverage Boost Tests", () => {
   jest.setTimeout(60000);
@@ -376,22 +377,28 @@ describe("Coverage Boost Tests", () => {
       expect(internalTefas._formatDateISO(date)).toBe("2023-01-01");
     });
 
-    test("getHistory with various periods", async () => {
-      // Tests period mapping
-      const h1 = await tefas.getHistory({ fundCode: "TAU", period: "1wk" }); // Mapping default
-      expect(Array.isArray(h1)).toBe(true);
+    test(
+      "getHistory with various periods",
+      resilientTest(async () => {
+        // Tests period mapping
+        const h1 = await tefas.getHistory({ fundCode: "TAU", period: "1wk" }); // Mapping default
+        expect(Array.isArray(h1)).toBe(true);
 
-      const h2 = await tefas.getHistory({ fundCode: "TAU", period: "6mo" }); // Mapping 90+ days
-      expect(Array.isArray(h2)).toBe(true);
-    });
+        const h2 = await tefas.getHistory({ fundCode: "TAU", period: "6mo" }); // Mapping 90+ days
+        expect(Array.isArray(h2)).toBe(true);
+      }),
+    );
 
-    test("getAllocationHistory convenience method", async () => {
-      const alloc = await tefas.getAllocationHistory({
-        fundCode: "TAU",
-        period: "1mo",
-      });
-      expect(Array.isArray(alloc)).toBe(true);
-    });
+    test(
+      "getAllocationHistory convenience method",
+      resilientTest(async () => {
+        const alloc = await tefas.getAllocationHistory({
+          fundCode: "TAU",
+          period: "1mo",
+        });
+        expect(Array.isArray(alloc)).toBe(true);
+      }),
+    );
 
     test("search method logic", async () => {
       const results = await tefas.search("TE1", 5);

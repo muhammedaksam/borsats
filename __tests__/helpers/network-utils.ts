@@ -17,10 +17,16 @@ const TRANSIENT_NETWORK_ERRORS = [
 ];
 
 /**
- * Check if an error is a transient network error
+ * Check if an error is a transient network error or transient data-availability issue
  */
 export function isTransientNetworkError(error: unknown): boolean {
   if (!error) return false;
+
+  // DataNotAvailableError: fund data can be temporarily unavailable
+  // (delisted funds, API maintenance, weekend gaps, etc.)
+  const name = error instanceof Error ? error.name : "";
+  if (name === "DataNotAvailableError") return true;
+
   const message =
     error instanceof Error
       ? error.message
