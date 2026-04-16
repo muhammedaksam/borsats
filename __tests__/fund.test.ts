@@ -39,6 +39,13 @@ class MockTEFAS extends TEFASProvider {
   async screenFunds(_opts: unknown) {
     return [];
   }
+
+  async getManagementFees(
+    _fundType?: Parameters<TEFASProvider["getManagementFees"]>[0],
+    _founder?: Parameters<TEFASProvider["getManagementFees"]>[1]
+  ): ReturnType<TEFASProvider["getManagementFees"]> {
+    return Promise.resolve([]);
+  }
 }
 
 // Overwrite singleton
