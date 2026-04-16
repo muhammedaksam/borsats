@@ -148,7 +148,7 @@ export class FX {
           end: endDt,
           institution,
         });
-      } catch (e) {
+      } catch {
         // Fallback to dovizcom
       }
     }

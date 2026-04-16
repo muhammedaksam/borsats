@@ -129,7 +129,7 @@ export class TradingViewSearchProvider extends BaseProvider {
       const results = this._parseResults(data, lim);
       this.cache.set(cacheKey, results, TradingViewSearchProvider.CACHE_TTL);
       return results;
-    } catch (e) {
+    } catch {
       // Fallback
       try {
         const data = await this._fetch(
@@ -139,7 +139,7 @@ export class TradingViewSearchProvider extends BaseProvider {
         const results = this._parseResults(data, lim);
         this.cache.set(cacheKey, results, TradingViewSearchProvider.CACHE_TTL);
         return results;
-      } catch (e2) {
+      } catch {
         return [];
       }
     }
@@ -252,7 +252,7 @@ export class TradingViewSearchProvider extends BaseProvider {
 
       this.cache.set(cacheKey, contracts, TradingViewSearchProvider.CACHE_TTL);
       return contracts;
-    } catch (e) {
+    } catch {
       return [];
     }
   }
