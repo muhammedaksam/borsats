@@ -31,7 +31,7 @@ describe("BistIndexProvider", () => {
         const symbols = indices.map((idx) => idx.symbol);
         expect(symbols).toEqual([...symbols].sort());
       }),
-      45000,
+      120000,
     );
   });
 
@@ -52,7 +52,7 @@ describe("BistIndexProvider", () => {
           expect(typeof components[0].symbol).toBe("string");
         }
       }),
-      45000,
+      120000,
     );
 
     it(
@@ -64,7 +64,7 @@ describe("BistIndexProvider", () => {
         expect(Array.isArray(components)).toBe(true);
         expect(components.length).toBeGreaterThan(20); // XU030 should have ~30 stocks
       }),
-      45000,
+      120000,
     );
 
     it(
@@ -76,7 +76,7 @@ describe("BistIndexProvider", () => {
         expect(Array.isArray(components)).toBe(true);
         expect(components.length).toBe(0);
       }),
-      45000,
+      120000,
     );
   });
 
@@ -87,7 +87,7 @@ describe("BistIndexProvider", () => {
         const result = await provider.isInIndex("THYAO", "XU100");
         expect(result).toBe(true);
       }),
-      45000,
+      120000,
     );
 
     it(
@@ -96,7 +96,7 @@ describe("BistIndexProvider", () => {
         const result = await provider.isInIndex("NONEXISTENT", "XU100");
         expect(result).toBe(false);
       }),
-      45000,
+      120000,
     );
   });
 
@@ -116,7 +116,7 @@ describe("BistIndexProvider", () => {
         // Should be sorted
         expect(indices).toEqual([...indices].sort());
       }),
-      45000,
+      120000,
     );
 
     it(
@@ -128,7 +128,7 @@ describe("BistIndexProvider", () => {
         expect(Array.isArray(indices)).toBe(true);
         expect(indices.length).toBe(0);
       }),
-      45000,
+      120000,
     );
   });
 });

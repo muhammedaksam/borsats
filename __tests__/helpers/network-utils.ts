@@ -14,6 +14,7 @@ const TRANSIENT_NETWORK_ERRORS = [
   "EAI_AGAIN",
   "EHOSTUNREACH",
   "socket hang up",
+  "timeout of", // Axios timeout: "timeout of 30000ms exceeded"
 ];
 
 /**
