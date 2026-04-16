@@ -15,6 +15,10 @@ const TRANSIENT_NETWORK_ERRORS = [
   "EHOSTUNREACH",
   "socket hang up",
   "timeout of", // Axios timeout: "timeout of 30000ms exceeded"
+  "status code 502", // Bad Gateway
+  "status code 503", // Service Unavailable
+  "status code 504", // Gateway Timeout
+  "status code 522", // Cloudflare Connection Timed Out
 ];
 
 /**

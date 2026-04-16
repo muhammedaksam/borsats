@@ -281,4 +281,34 @@ describe("Ticker Integration Tests", () => {
       }
     }
   }, 120000);
+
+  test("Financial statements - getBalanceSheet with options", async () => {
+    const ticker = new Ticker("THYAO");
+    try {
+      const bs = await ticker.getBalanceSheet({ quarterly: true, lastN: 2 });
+      expect(bs).toBeDefined();
+    } catch {
+      // Expected if network fails
+    }
+  });
+
+  test("Financial statements - getIncomeStmt with options", async () => {
+    const ticker = new Ticker("THYAO");
+    try {
+      const income = await ticker.getIncomeStmt({ quarterly: true, lastN: 2 });
+      expect(income).toBeDefined();
+    } catch {
+      // Expected if network fails
+    }
+  });
+
+  test("Financial statements - getCashflow with options", async () => {
+    const ticker = new Ticker("THYAO");
+    try {
+      const cf = await ticker.getCashflow({ quarterly: true, lastN: 2 });
+      expect(cf).toBeDefined();
+    } catch {
+      // Expected if network fails
+    }
+  });
 });

@@ -314,4 +314,31 @@ describe("Portfolio Module", () => {
     await pEmpty.performance();
     await pEmpty.weights;
   });
+
+  test("Portfolio drift and rebalancePlan", async () => {
+    const p = new Portfolio();
+    p.add("THYAO", { shares: 10, cost: 200 }); // $2000 value approx
+    p.add("GARAN", { shares: 20, cost: 50 }); // $1000 value approx
+    
+    // Mock value/weights to be deterministic
+    const valueSpy = jest.spyOn(p, "value", "get").mockResolvedValue(3000);
+    const weightsSpy = jest.spyOn(p, "weights", "get").mockResolvedValue({
+      THYAO: 0.6666,
+      GARAN: 0.3333,
+    });
+
+    try {
+      p.setTargetWeights({ THYAO: 0.5, GARAN: 0.5 });
+      expect(p.getTargetWeights()).toEqual({ THYAO: 0.5, GARAN: 0.5 });
+      
+      const drift = await p.drift();
+      expect(drift.length).toBeGreaterThan(0);
+      
+      const plan = await p.rebalancePlan();
+      expect(plan.length).toBeGreaterThan(0);
+    } finally {
+      valueSpy.mockRestore();
+      weightsSpy.mockRestore();
+    }
+  });
 });

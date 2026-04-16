@@ -134,6 +134,38 @@ describe("Fund", () => {
       expect(comparison).toHaveProperty("funds");
     });
   });
+
+  test("Fund tax and fees methods", async () => {
+    await runSafe(async () => {
+      // Set profile so it doesn't fail on tax lookups
+      mockProvider.mockProfile = {
+        fund_code: "TI1",
+        category: "Hisse Senedi Fonu"
+      } as Partial<FundDetail>;
+      
+      const taxCat = await fund.taxCategory;
+      expect(taxCat).toBeDefined();
+      
+      const taxRate = await fund.withholdingTaxRate();
+      expect(typeof taxRate).toBe("number");
+      
+      // Mock managementFees to return array
+      jest.spyOn(mockProvider, "getManagementFees").mockResolvedValue([
+        { 
+          fund_code: "TI1",
+          applied_fee: 2.0,
+          name: "Test",
+          fund_category: "Test",
+          founder_code: "TST",
+          prospectus_fee: 3.0,
+          max_expense_ratio: 4.0,
+          annual_return: null
+        }
+      ]);
+      const fee = await fund.managementFee;
+      expect(fee?.applied_fee).toBe(2.0);
+    });
+  });
 });
 
 describe("Fund Max Coverage", () => {
