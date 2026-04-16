@@ -16,13 +16,20 @@ import {
   calculateADX,
   calculateATR,
   calculateBollingerBands,
+  calculateDEMA,
   calculateEMA,
+  calculateHHV,
+  calculateLLV,
   calculateMACD,
+  calculateMOM,
   calculateOBV,
+  calculateROC,
   calculateRSI,
   calculateSMA,
   calculateStochastic,
+  calculateTEMA,
   calculateVWAP,
+  calculateWMA,
   TechnicalAnalyzer,
 } from "~/technical";
 import {
@@ -382,9 +389,10 @@ export class Ticker {
       start?: Date | string;
       end?: Date | string;
       actions?: boolean;
+      adjust?: boolean;
     } = {},
   ): Promise<OHLCVWithActions[]> {
-    const { period = "1mo", interval = "1d" } = options;
+    const { period = "1mo", interval = "1d", adjust = true } = options;
 
     const endDate = options.end ? new Date(options.end) : new Date();
     const startDate = options.start
@@ -404,7 +412,67 @@ export class Ticker {
       await this._mergeActions(history);
     }
 
+    // Reverse split adjustments if unadjusted prices are requested
+    if (!adjust && history.length > 0) {
+      await this._unadjustPrices(history);
+    }
+
     return history;
+  }
+
+  /**
+   * Reverse split adjustments on historical prices.
+   * Walks backward through split events, multiplying prices
+   * by the cumulative split factor so that pre-split bars
+   * reflect their original nominal values.
+   */
+  private async _unadjustPrices(
+    history: OHLCVWithActions[],
+  ): Promise<void> {
+    try {
+      const splitData = await this.splits.catch(
+        () => [] as CapitalIncreaseData[],
+      );
+      if (splitData.length === 0) return;
+
+      // Build split factor map
+      const splitFactors: { date: Date; ratio: number }[] = [];
+      for (const s of splitData) {
+        const bonus =
+          (s.bonusFromCapital || 0) + (s.bonusFromDividend || 0);
+        if (bonus > 0) {
+          splitFactors.push({
+            date: s.date,
+            ratio: 1 + bonus / 100,
+          });
+        }
+      }
+
+      if (splitFactors.length === 0) return;
+
+      // Sort splits from most recent to oldest
+      splitFactors.sort(
+        (a, b) => b.date.getTime() - a.date.getTime(),
+      );
+
+      // Walk backward: for each split, multiply all bars before the
+      // split date by the split ratio
+      for (const sf of splitFactors) {
+        for (const bar of history) {
+          if (bar.date < sf.date) {
+            bar.open *= sf.ratio;
+            bar.high *= sf.ratio;
+            bar.low *= sf.ratio;
+            bar.close *= sf.ratio;
+            if (bar.volume > 0) {
+              bar.volume = Math.round(bar.volume / sf.ratio);
+            }
+          }
+        }
+      }
+    } catch {
+      // Ignore errors — return data as-is
+    }
   }
 
   private async _mergeActions(history: OHLCVWithActions[]): Promise<void> {
@@ -505,6 +573,51 @@ export class Ticker {
       this.symbol,
       "cashflow",
       true,
+    ) as Promise<CashFlowStatement>;
+  }
+
+  /**
+   * Get balance sheet with parametric lastN
+   */
+  async getBalanceSheet(
+    options: { quarterly?: boolean; lastN?: number | string; financialGroup?: string } = {},
+  ): Promise<BalanceSheet> {
+    return getIsYatirimProvider().getFinancialStatements(
+      this.symbol,
+      "balance_sheet",
+      options.quarterly ?? false,
+      options.financialGroup,
+      options.lastN,
+    ) as Promise<BalanceSheet>;
+  }
+
+  /**
+   * Get income statement with parametric lastN
+   */
+  async getIncomeStmt(
+    options: { quarterly?: boolean; lastN?: number | string; financialGroup?: string } = {},
+  ): Promise<IncomeStatement> {
+    return getIsYatirimProvider().getFinancialStatements(
+      this.symbol,
+      "income_stmt",
+      options.quarterly ?? false,
+      options.financialGroup,
+      options.lastN,
+    ) as Promise<IncomeStatement>;
+  }
+
+  /**
+   * Get cash flow with parametric lastN
+   */
+  async getCashflow(
+    options: { quarterly?: boolean; lastN?: number | string; financialGroup?: string } = {},
+  ): Promise<CashFlowStatement> {
+    return getIsYatirimProvider().getFinancialStatements(
+      this.symbol,
+      "cashflow",
+      options.quarterly ?? false,
+      options.financialGroup,
+      options.lastN,
     ) as Promise<CashFlowStatement>;
   }
 
@@ -738,6 +851,55 @@ export class Ticker {
     const hist = await this.history({ period });
     if (hist.length === 0) return NaN;
     const series = calculateADX(hist, adxPeriod);
+    return series[series.length - 1];
+  }
+
+  async hhv(period: Period = "3mo", hhvPeriod = 14): Promise<number> {
+    const hist = await this.history({ period });
+    if (hist.length === 0) return NaN;
+    const series = calculateHHV(hist, hhvPeriod);
+    return series[series.length - 1];
+  }
+
+  async llv(period: Period = "3mo", llvPeriod = 14): Promise<number> {
+    const hist = await this.history({ period });
+    if (hist.length === 0) return NaN;
+    const series = calculateLLV(hist, llvPeriod);
+    return series[series.length - 1];
+  }
+
+  async mom(period: Period = "3mo", momPeriod = 10): Promise<number> {
+    const hist = await this.history({ period });
+    if (hist.length === 0) return NaN;
+    const series = calculateMOM(hist, momPeriod);
+    return series[series.length - 1];
+  }
+
+  async roc(period: Period = "3mo", rocPeriod = 10): Promise<number> {
+    const hist = await this.history({ period });
+    if (hist.length === 0) return NaN;
+    const series = calculateROC(hist, rocPeriod);
+    return series[series.length - 1];
+  }
+
+  async wma(period: Period = "3mo", wmaPeriod = 20): Promise<number> {
+    const hist = await this.history({ period });
+    if (hist.length === 0) return NaN;
+    const series = calculateWMA(hist, wmaPeriod);
+    return series[series.length - 1];
+  }
+
+  async dema(period: Period = "3mo", demaPeriod = 20): Promise<number> {
+    const hist = await this.history({ period });
+    if (hist.length === 0) return NaN;
+    const series = calculateDEMA(hist, demaPeriod);
+    return series[series.length - 1];
+  }
+
+  async tema(period: Period = "3mo", temaPeriod = 20): Promise<number> {
+    const hist = await this.history({ period });
+    if (hist.length === 0) return NaN;
+    const series = calculateTEMA(hist, temaPeriod);
     return series[series.length - 1];
   }
 

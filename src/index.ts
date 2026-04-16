@@ -67,6 +67,8 @@ export * from "~/eurobond";
 export { Eurobond } from "~/eurobond";
 
 export * from "~/exceptions";
+
+export * from "~/tax";
 // tradingview-screener-native - selective exports to avoid conflicts
 export {
   FIELD_MAP,

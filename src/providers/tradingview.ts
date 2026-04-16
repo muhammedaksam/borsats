@@ -352,8 +352,9 @@ export class TradingViewProvider extends BaseProvider {
     // Map our interval format to TradingView format
     const tf = TradingViewProvider.TIMEFRAMES[interval] || "1D";
 
-    // Calculate period/bars
-    const bars = this.calculateBars("1mo", interval, startDt, endDt);
+    // Always calculate bars from start to *now* to ensure enough data
+    // We'll filter by date range after receiving the data
+    const bars = this.calculateBars("1mo", interval, startDt, new Date());
 
     const tvSymbol = `${exchange}:${symbol}`;
     const chartSession = this.generateSessionId("cs");
@@ -457,9 +458,18 @@ export class TradingViewProvider extends BaseProvider {
             dataReceived = true;
             cleanup();
 
-            const result = Object.values(periods).sort(
+            let result = Object.values(periods).sort(
               (a, b) => a.date.getTime() - b.date.getTime(),
             );
+
+            // Filter by requested date range
+            if (startDt) {
+              result = result.filter((d) => d.date >= startDt);
+            }
+            if (endDt) {
+              result = result.filter((d) => d.date <= endDt);
+            }
+
             resolve(result);
           } else if (method === "critical_error" || method === "symbol_error") {
             errorMsg = JSON.stringify(params);

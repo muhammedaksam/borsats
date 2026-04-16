@@ -1,5 +1,6 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
+import https from "https";
 
 import {
   APIError,
@@ -46,6 +47,16 @@ export class IsYatirimProvider extends BaseProvider {
   public static readonly FINANCIAL_GROUP_INDUSTRIAL = "XI_29"; // Sanayi şirketleri
   public static readonly FINANCIAL_GROUP_BANK = "UFRS"; // Bankalar
 
+  // Max periods per API call (reduced from 5 to 4 in v0.8.3)
+  private static readonly MAX_PERIODS_PER_CALL = 4;
+
+  // Item code prefixes for filtering financial statement types
+  private static readonly ITEM_CODE_PREFIXES: Record<string, string> = {
+    balance_sheet: "1", // Balance sheet items start with 1 or 2
+    income_stmt: "6", // Income statement items start with 6
+    cashflow: "7", // Cash flow items start with 7
+  };
+
   // Known market indices
   private static readonly INDICES: Record<string, string> = {
     XU100: "BIST 100",
@@ -74,6 +85,11 @@ export class IsYatirimProvider extends BaseProvider {
   constructor() {
     super({
       baseUrl: "https://www.isyatirim.com.tr",
+    });
+
+    // Disable SSL verification for IsYatirim as its certificates frequently have issues
+    this.client.defaults.httpsAgent = new https.Agent({
+      rejectUnauthorized: false,
     });
   }
 
@@ -240,12 +256,13 @@ export class IsYatirimProvider extends BaseProvider {
       | "cashflow" = "balance_sheet",
     quarterly: boolean = false,
     financialGroup?: string,
+    lastN?: number | string | null,
   ): Promise<Record<string, unknown>[]> {
     const cleanSymbol = symbol
       .toUpperCase()
       .replace(".IS", "")
       .replace(".E", "");
-    const cacheKey = `isyatirim:financial:${cleanSymbol}:${statementType}:${quarterly}`;
+    const cacheKey = `isyatirim:financial:${cleanSymbol}:${statementType}:${quarterly}:${lastN ?? "default"}`;
 
     const cached = this.cache.get(cacheKey);
     if (cached) {
@@ -256,50 +273,119 @@ export class IsYatirimProvider extends BaseProvider {
       financialGroup = IsYatirimProvider.FINANCIAL_GROUP_INDUSTRIAL;
     }
 
-    const tableMap = {
-      balance_sheet: ["BILANCO_AKTIF", "BILANCO_PASIF"],
-      income_stmt: ["GELIR_TABLOSU"],
-      cashflow: ["NAKIT_AKIM_TABLOSU"],
-    };
-
-    const tables = tableMap[statementType] || [
-      "BILANCO_AKTIF",
-      "BILANCO_PASIF",
-    ];
+    const count = IsYatirimProvider._resolveLastN(lastN ?? null, quarterly);
     const currentYear = new Date().getFullYear();
-    const periods = this._getPeriods(currentYear, quarterly, 5);
+    const periods = this._getPeriods(currentYear, quarterly, count);
 
-    const allData: Record<string, unknown>[][] = [];
+    // Split periods into batches of MAX_PERIODS_PER_CALL
+    const batchSize = IsYatirimProvider.MAX_PERIODS_PER_CALL;
+    const batches: { year: number; period: number }[][] = [];
+    for (let i = 0; i < periods.length; i += batchSize) {
+      batches.push(periods.slice(i, i + batchSize));
+    }
 
-    for (const tableName of tables) {
+    // Single API call per batch — filter by itemCode prefix in _parseFinancialResponse
+    const allDfs: Record<string, unknown>[][] = [];
+    for (const batchPeriods of batches) {
       try {
         const df = await this._fetchFinancialTable(
           cleanSymbol,
-          tableName,
           financialGroup,
-          periods,
+          batchPeriods,
+          quarterly,
+          statementType,
         );
         if (df.length > 0) {
-          allData.push(df);
+          allDfs.push(df);
         }
       } catch {
         continue;
       }
     }
 
-    if (allData.length === 0) {
+    if (allDfs.length === 0) {
       throw new DataNotAvailableError(
         `No financial data available for ${cleanSymbol}`,
       );
     }
 
-    // Combine logic (simple concat for now as they are distinct rows usually)
-    let result = allData.flat();
+    // Merge batches horizontally (same rows, different period columns)
+    let result = allDfs[0];
+    for (let b = 1; b < allDfs.length; b++) {
+      const extraDf = allDfs[b];
+      // Build a map of Item -> row for the extra batch
+      const extraMap = new Map<string, Record<string, unknown>>();
+      for (const row of extraDf) {
+        extraMap.set(row.Item as string, row);
+      }
+      // Merge new columns into result
+      const resultCols = new Set(result.length > 0 ? Object.keys(result[0]) : []);
+      for (const row of result) {
+        const extraRow = extraMap.get(row.Item as string);
+        if (extraRow) {
+          for (const [key, value] of Object.entries(extraRow)) {
+            if (!resultCols.has(key)) {
+              row[key] = value;
+            }
+          }
+        }
+      }
+    }
 
-    // De-duplication could be needed if tables overlap, but usually they don't for distinct table names
+    // Sort columns: most recent period first (keep Item as first key)
+    result = result.map((row) => {
+      const sorted: Record<string, unknown> = { Item: row.Item };
+      const periodKeys = Object.keys(row).filter((k) => k !== "Item");
+      periodKeys.sort((a, b) => {
+        const ka = IsYatirimProvider._periodSortKey(a);
+        const kb = IsYatirimProvider._periodSortKey(b);
+        return kb[0] - ka[0] || kb[1] - ka[1]; // Descending
+      });
+      for (const key of periodKeys) {
+        sorted[key] = row[key];
+      }
+      return sorted;
+    });
 
     this.cache.set(cacheKey, result, TTL.FINANCIAL_STATEMENTS);
     return result;
+  }
+
+  /**
+   * Resolve lastN parameter to an integer count.
+   */
+  private static _resolveLastN(
+    lastN: number | string | null,
+    quarterly: boolean,
+  ): number {
+    if (lastN === null || lastN === undefined) return 5;
+    if (typeof lastN === "string") {
+      if (lastN.toLowerCase() === "all") return quarterly ? 40 : 15;
+      throw new Error(
+        `Invalid lastN value: "${lastN}". Use a number or "all".`,
+      );
+    }
+    if (typeof lastN !== "number" || lastN < 1) {
+      throw new Error(
+        `lastN must be a positive integer or "all", got ${lastN}`,
+      );
+    }
+    return lastN;
+  }
+
+  /**
+   * Sort key for period column names. Returns [year, quarter] tuple.
+   */
+  private static _periodSortKey(colName: string): [number, number] {
+    try {
+      if (colName.includes("Q")) {
+        const [yearStr, qStr] = colName.split("Q");
+        return [parseInt(yearStr), parseInt(qStr)];
+      }
+      return [parseInt(colName), 0];
+    } catch {
+      return [0, 0];
+    }
   }
 
   /**
@@ -897,10 +983,11 @@ export class IsYatirimProvider extends BaseProvider {
         startPeriod = 9;
       }
 
+      // Generate exactly `count` quarters going backward
       let year = startYear;
       let period = startPeriod;
 
-      for (let i = 0; i < count * 4; i++) {
+      for (let i = 0; i < count; i++) {
         periods.push({ year, period });
         period -= 3;
         if (period <= 0) {
@@ -918,9 +1005,10 @@ export class IsYatirimProvider extends BaseProvider {
 
   private async _fetchFinancialTable(
     symbol: string,
-    tableName: string,
     financialGroup: string,
     periods: { year: number; period: number }[],
+    quarterly: boolean = false,
+    statementType?: string,
   ): Promise<Record<string, unknown>[]> {
     const url = `${IsYatirimProvider.BASE_URL}/Data.aspx/MaliTablo`;
 
@@ -931,14 +1019,20 @@ export class IsYatirimProvider extends BaseProvider {
       financialGroup,
     };
 
-    periods.slice(0, 5).forEach((p, i) => {
+    const maxP = IsYatirimProvider.MAX_PERIODS_PER_CALL;
+    periods.slice(0, maxP).forEach((p, i) => {
       params[`year${i + 1}`] = p.year;
       params[`period${i + 1}`] = p.period;
     });
 
     try {
       const response = await this.client.get(url, { params });
-      return this._parseFinancialResponse(response.data, periods);
+      return this._parseFinancialResponse(
+        response.data,
+        periods,
+        quarterly,
+        statementType,
+      );
     } catch (e) {
       throw new APIError(
         `Failed to fetch financial table for ${symbol}: ${(e as Error).message}`,
@@ -949,13 +1043,26 @@ export class IsYatirimProvider extends BaseProvider {
   private _parseFinancialResponse(
     data: Record<string, unknown>,
     periods: { year: number; period: number }[],
+    quarterly: boolean = false,
+    statementType?: string,
   ): Record<string, unknown>[] {
     if (!data || typeof data !== "object") return [];
 
-    const items = data.value as Array<Record<string, unknown>>;
+    let items = data.value as Array<Record<string, unknown>>;
     if (!items || !Array.isArray(items)) return [];
 
-    const isQuarterly = new Set(periods.map((p) => p.period)).size > 1;
+    // Filter by itemCode prefix when statementType is specified
+    const prefix = statementType
+      ? IsYatirimProvider.ITEM_CODE_PREFIXES[statementType]
+      : undefined;
+    if (prefix) {
+      items = items.filter((item) =>
+        String(item.itemCode ?? "").startsWith(prefix),
+      );
+      if (items.length === 0) return [];
+    }
+
+    const maxP = IsYatirimProvider.MAX_PERIODS_PER_CALL;
 
     return items.map((item) => {
       const rowName = (item.itemDescTr ||
@@ -963,9 +1070,9 @@ export class IsYatirimProvider extends BaseProvider {
         "Unknown") as string;
       const rowData: Record<string, unknown> = { Item: rowName };
 
-      periods.slice(0, 5).forEach((p, i) => {
+      periods.slice(0, maxP).forEach((p, i) => {
         let colName = "";
-        if (isQuarterly) {
+        if (quarterly) {
           colName = `${p.year}Q${Math.floor(p.period / 3)}`;
         } else {
           colName = `${p.year}`;

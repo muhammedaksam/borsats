@@ -5,6 +5,10 @@ import {
   FundHistoryItem,
   getTEFASProvider,
 } from "~/providers/tefas";
+import {
+  classifyFundTaxCategory,
+  getWithholdingTaxRate,
+} from "~/tax";
 import { TechnicalAnalyzer } from "~/technical";
 import { FundType, OHLCVData } from "~/types";
 
@@ -276,10 +280,67 @@ export class Fund {
     const m = await this.riskMetrics(period, rfRate);
     return m.sharpeRatio;
   }
+
+  /**
+   * Get management fee data for this fund
+   */
+  get managementFee(): Promise<{
+    applied_fee: number | null;
+    prospectus_fee: number | null;
+    max_expense_ratio: number | null;
+  } | null> {
+    return this.fundType.then((type) =>
+      getTEFASProvider()
+        .getManagementFees(type)
+        .then((fees) => {
+          const match = fees.find(
+            (f) => f.fund_code.toUpperCase() === this._fundCode,
+          );
+          if (!match) return null;
+          return {
+            applied_fee: match.applied_fee,
+            prospectus_fee: match.prospectus_fee,
+            max_expense_ratio: match.max_expense_ratio,
+          };
+        })
+        .catch(() => null),
+    );
+  }
+
+  /**
+   * Get tax category for this fund
+   */
+  get taxCategory(): Promise<string> {
+    return this.info.then((info) => {
+      return classifyFundTaxCategory(info.category || "", info.name);
+    });
+  }
+
+  /**
+   * Get withholding tax rate for this fund
+   */
+  async withholdingTaxRate(
+    purchaseDate?: Date,
+    holdingDays?: number,
+  ): Promise<number> {
+    const info = await this.info;
+    const taxCat = classifyFundTaxCategory(info.category || "", info.name);
+    return getWithholdingTaxRate(taxCat, purchaseDate, holdingDays);
+  }
 }
 
 export function searchFunds(query: string) {
   return getTEFASProvider().search(query);
+}
+
+/**
+ * Get management fees for all funds of a given type
+ */
+export function managementFees(
+  fundType: "YAT" | "EMK" = "YAT",
+  founder?: string,
+) {
+  return getTEFASProvider().getManagementFees(fundType, founder);
 }
 
 export function screenFunds(options: Record<string, unknown>) {
