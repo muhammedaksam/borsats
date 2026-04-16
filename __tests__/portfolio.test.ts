@@ -341,4 +341,107 @@ describe("Portfolio Module", () => {
       weightsSpy.mockRestore();
     }
   });
+
+  test("Portfolio drift throws without target weights", async () => {
+    const p = new Portfolio();
+    p.add("THYAO", { shares: 10, cost: 200 });
+    await expect(p.drift()).rejects.toThrow("No target weights set");
+  });
+
+  test("Portfolio rebalance (dry run)", async () => {
+    const p = new Portfolio();
+    p.add("THYAO", { shares: 10, cost: 200 });
+    p.add("GARAN", { shares: 20, cost: 50 });
+
+    const valueSpy = jest.spyOn(p, "value", "get").mockResolvedValue(3000);
+    const weightsSpy = jest.spyOn(p, "weights", "get").mockResolvedValue({
+      THYAO: 0.6666,
+      GARAN: 0.3333,
+    });
+
+    try {
+      p.setTargetWeights({ THYAO: 0.5, GARAN: 0.5 });
+      const result = await p.rebalance(5, true);
+      expect(result.executed).toBe(false);
+      expect(Array.isArray(result.plan)).toBe(true);
+    } finally {
+      valueSpy.mockRestore();
+      weightsSpy.mockRestore();
+    }
+  });
+
+  test("Portfolio rebalancePlan with threshold filtering", async () => {
+    const p = new Portfolio();
+    p.add("A", { shares: 10, cost: 100 });
+    p.add("B", { shares: 10, cost: 100 });
+
+    const valueSpy = jest.spyOn(p, "value", "get").mockResolvedValue(2000);
+    const weightsSpy = jest.spyOn(p, "weights", "get").mockResolvedValue({
+      A: 0.51,
+      B: 0.49,
+    });
+
+    try {
+      p.setTargetWeights({ A: 0.5, B: 0.5 });
+      // Small drift (2% and 2%) should be filtered by a 5% threshold
+      const plan = await p.rebalancePlan(5);
+      expect(plan.length).toBe(0);
+    } finally {
+      valueSpy.mockRestore();
+      weightsSpy.mockRestore();
+    }
+  });
+
+  test("Portfolio drift includes extra holdings not in targets", async () => {
+    const p = new Portfolio();
+    p.add("A", { shares: 10, cost: 100 });
+    p.add("EXTRA", { shares: 5, cost: 50 });
+
+    const valueSpy = jest.spyOn(p, "value", "get").mockResolvedValue(1000);
+    const weightsSpy = jest.spyOn(p, "weights", "get").mockResolvedValue({
+      A: 0.7,
+      EXTRA: 0.3,
+    });
+
+    try {
+      p.setTargetWeights({ A: 1.0 }); // Only A in targets, EXTRA is extra
+      const drift = await p.drift();
+      const extraHolding = drift.find((d) => d.symbol === "EXTRA");
+      expect(extraHolding).toBeDefined();
+      expect(extraHolding!.targetWeight).toBe(0);
+      expect(extraHolding!.driftPct).toBe(100);
+    } finally {
+      valueSpy.mockRestore();
+      weightsSpy.mockRestore();
+    }
+  });
+
+  test("Portfolio toDict/fromDict with targetWeights", () => {
+    const p = new Portfolio();
+    p.add("THYAO", { shares: 10, cost: 200 });
+    p.setTargetWeights({ THYAO: 1.0 });
+
+    const dict = p.toDict();
+    expect(dict.targetWeights).toEqual({ THYAO: 1.0 });
+
+    const restored = Portfolio.fromDict(dict);
+    expect(restored.getTargetWeights()).toEqual({ THYAO: 1.0 });
+  });
+
+  test("Portfolio update purchaseDate", () => {
+    const p = new Portfolio();
+    p.add("THYAO", { shares: 10, cost: 200, purchaseDate: "2024-01-01" });
+    p.update("THYAO", { purchaseDate: "2024-06-01" });
+    const dict = p.toDict();
+    const holding = dict.holdings.find((h) => h.symbol === "THYAO");
+    expect(holding?.purchaseDate).toBe("2024-06-01");
+  });
+
+  test("Portfolio pnlPct with zero cost", async () => {
+    const p = new Portfolio();
+    p.add("FREE", { shares: 100, assetType: "stock" });
+    // cost is 0 (no costPerShare set)
+    const pct = await p.pnlPct;
+    expect(pct).toBe(0);
+  });
 });
