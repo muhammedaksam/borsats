@@ -444,4 +444,67 @@ describe("Portfolio Module", () => {
     const pct = await p.pnlPct;
     expect(pct).toBe(0);
   });
+
+  test("Portfolio full coverage (assets & catches)", async () => {
+    const p = new Portfolio();
+    p.add("ERR", { shares: 10, cost: 100 }); // Will trigger catch blocks
+    p.add("MYFUND", { shares: 100, cost: 5, assetType: "fund", purchaseDate: "2024-01-01" });
+    p.add("MYFX", { shares: 100, cost: 20, assetType: "fx" });
+    p.add("MYCRYPTO", { shares: 1, cost: 40000, assetType: "crypto" });
+
+    // Mock the getters and methods
+    const fiSpy = jest.spyOn(Ticker.prototype, "fastInfo", "get").mockImplementation(function (this: Ticker) {
+      if (this.symbol === "ERR") throw new Error("Mock error");
+      return { lastPrice: Promise.resolve(100) } as unknown as FastInfo;
+    });
+
+    const fundInfoSpy = jest.spyOn(Fund.prototype, "info", "get").mockImplementation(function (this: Fund) {
+      return Promise.resolve({ price: 10 } as unknown as FundDetail);
+    });
+
+    const fundHistSpy = jest.spyOn(Fund.prototype, "history").mockImplementation(function (this: Fund) {
+      return Promise.resolve([{ date: new Date("2024-10-10"), price: 10 }] as unknown as Awaited<ReturnType<Fund["history"]>>);
+    });
+
+    const fxCurrentSpy = jest.spyOn(FX.prototype, "current", "get").mockImplementation(function (this: FX) {
+      return Promise.resolve({ last: 30 } as unknown as CurrentData);
+    });
+
+    const cryptoCurrentSpy = jest.spyOn(Crypto.prototype, "current", "get").mockImplementation(function (this: Crypto) {
+      return Promise.resolve({ last: 50000 } as unknown as CurrentData);
+    });
+
+    try {
+      // 1. calculateTotalValue & pnl (hits 99-100, 106)
+      const val = await p.value;
+      // ERR: 0, MYFUND: 1000, MYFX: 3000, MYCRYPTO: 50000 -> 54000
+      expect(val).toBeGreaterThan(0);
+
+      // 2. weights (hits 162)
+      const w = await p.weights;
+      // Expect myfund, myfx, mycrypto to have weights
+      expect(w["MYFUND"]).toBeDefined();
+
+      // 3. holdingsDetail (hits 298-299)
+      const detail = await p.holdingsDetail();
+      expect(detail.length).toBe(4);
+
+      // 4. history (hits 355-356, 364-365)
+      const h = await p.history("1y");
+      expect(Array.isArray(h)).toBe(true);
+      
+      // 5. riskMetrics (hits 471) -> tests < 20 points early return
+      jest.spyOn(p, "history").mockResolvedValueOnce([{ date: new Date(), value: 100, dailyReturn: 0 }]); // Only 1 point
+      const rm = await p.riskMetrics();
+      expect(rm.annualizedVolatility).toBeNaN();
+
+    } finally {
+      fiSpy.mockRestore();
+      fundInfoSpy.mockRestore();
+      fundHistSpy.mockRestore();
+      fxCurrentSpy.mockRestore();
+      cryptoCurrentSpy.mockRestore();
+    }
+  });
 });
+

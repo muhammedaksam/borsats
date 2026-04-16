@@ -1,4 +1,4 @@
-import { compareFunds, Fund, screenFunds, searchFunds } from "~/fund";
+import { compareFunds, Fund, screenFunds, searchFunds, managementFees } from "~/fund";
 import {
   FundDetail,
   FundHistoryItem,
@@ -393,6 +393,12 @@ describe("Fund module-level exports", () => {
     expect(result.funds).toEqual([]);
     expect(result.rankings).toEqual({});
     expect(result.summary).toEqual({});
+  });
+
+  test("managementFees delegates to provider", async () => {
+    const spy = jest.spyOn(mockProvider, "getManagementFees");
+    await managementFees("YAT", "TST");
+    expect(spy).toHaveBeenCalledWith("YAT", "TST");
   });
 });
 
