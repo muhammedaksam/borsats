@@ -667,27 +667,25 @@ export class TEFASProvider extends BaseProvider {
       const result = response.data;
       const allFunds = result?.data || [];
 
-      return allFunds.map(
-        (fund: Record<string, string | number | null>) => ({
-          fund_code: fund.FONKODU || "",
-          name: fund.FONUNVAN || "",
-          fund_category: fund.FONTURACIKLAMA || "",
-          founder_code: fund.KURUCUKODU || "",
-          applied_fee: TEFASProvider.parseTurkishDecimal(
-            fund.UYGULANANYU1Y as string,
-          ),
-          prospectus_fee: TEFASProvider.parseTurkishDecimal(
-            fund.FONICTUZUKYU1G as string,
-          ),
-          max_expense_ratio: TEFASProvider.parseTurkishDecimal(
-            fund.FONTOPGIDERKESORAN as string,
-          ),
-          annual_return:
-            fund.YILLIKGETIRI !== null && fund.YILLIKGETIRI !== undefined
-              ? Number(fund.YILLIKGETIRI)
-              : null,
-        }),
-      );
+      return allFunds.map((fund: Record<string, string | number | null>) => ({
+        fund_code: fund.FONKODU || "",
+        name: fund.FONUNVAN || "",
+        fund_category: fund.FONTURACIKLAMA || "",
+        founder_code: fund.KURUCUKODU || "",
+        applied_fee: TEFASProvider.parseTurkishDecimal(
+          fund.UYGULANANYU1Y as string,
+        ),
+        prospectus_fee: TEFASProvider.parseTurkishDecimal(
+          fund.FONICTUZUKYU1G as string,
+        ),
+        max_expense_ratio: TEFASProvider.parseTurkishDecimal(
+          fund.FONTOPGIDERKESORAN as string,
+        ),
+        annual_return:
+          fund.YILLIKGETIRI !== null && fund.YILLIKGETIRI !== undefined
+            ? Number(fund.YILLIKGETIRI)
+            : null,
+      }));
     } catch (err) {
       throw new APIError(
         `Failed to fetch management fees: ${(err as Error).message}`,

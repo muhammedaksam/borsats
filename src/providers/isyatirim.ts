@@ -1,6 +1,6 @@
+import https from "https";
 import axios from "axios";
 import * as cheerio from "cheerio";
-import https from "https";
 
 import {
   APIError,
@@ -319,7 +319,9 @@ export class IsYatirimProvider extends BaseProvider {
         extraMap.set(row.Item as string, row);
       }
       // Merge new columns into result
-      const resultCols = new Set(result.length > 0 ? Object.keys(result[0]) : []);
+      const resultCols = new Set(
+        result.length > 0 ? Object.keys(result[0]) : [],
+      );
       for (const row of result) {
         const extraRow = extraMap.get(row.Item as string);
         if (extraRow) {

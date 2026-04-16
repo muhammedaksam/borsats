@@ -718,9 +718,7 @@ export class Portfolio {
     }>
   > {
     if (Object.keys(this.targetWeights).length === 0) {
-      throw new Error(
-        "No target weights set. Use setTargetWeights() first.",
-      );
+      throw new Error("No target weights set. Use setTargetWeights() first.");
     }
 
     const currentWeights = await this.weights;
@@ -736,7 +734,8 @@ export class Portfolio {
     for (const [symbol, target] of Object.entries(this.targetWeights)) {
       const current = currentWeights[symbol] || 0;
       const drift = current - target;
-      const driftPct = target > 0 ? (drift / target) * 100 : current > 0 ? Infinity : 0;
+      const driftPct =
+        target > 0 ? (drift / target) * 100 : current > 0 ? Infinity : 0;
 
       result.push({
         symbol,
@@ -761,9 +760,7 @@ export class Portfolio {
       }
     }
 
-    return result.sort(
-      (a, b) => Math.abs(b.driftPct) - Math.abs(a.driftPct),
-    );
+    return result.sort((a, b) => Math.abs(b.driftPct) - Math.abs(a.driftPct));
   }
 
   /**
@@ -772,9 +769,7 @@ export class Portfolio {
    *
    * @param threshold Minimum drift percentage to trigger a trade (default: 0)
    */
-  async rebalancePlan(
-    threshold: number = 0,
-  ): Promise<
+  async rebalancePlan(threshold: number = 0): Promise<
     Array<{
       symbol: string;
       action: "buy" | "sell";

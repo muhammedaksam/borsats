@@ -119,7 +119,11 @@ export function classifyFundTaxCategory(
   if (lower.includes("hisse")) {
     return TAX_CATEGORIES.HISSE_YOĞUN;
   }
-  if (lower.includes("altın") || lower.includes("gümüş") || lower.includes("kıymetli maden")) {
+  if (
+    lower.includes("altın") ||
+    lower.includes("gümüş") ||
+    lower.includes("kıymetli maden")
+  ) {
     return TAX_CATEGORIES.ALTIN_GUMUS;
   }
   if (lower.includes("döviz")) {

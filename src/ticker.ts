@@ -426,9 +426,7 @@ export class Ticker {
    * by the cumulative split factor so that pre-split bars
    * reflect their original nominal values.
    */
-  private async _unadjustPrices(
-    history: OHLCVWithActions[],
-  ): Promise<void> {
+  private async _unadjustPrices(history: OHLCVWithActions[]): Promise<void> {
     try {
       const splitData = await this.splits.catch(
         () => [] as CapitalIncreaseData[],
@@ -438,8 +436,7 @@ export class Ticker {
       // Build split factor map
       const splitFactors: { date: Date; ratio: number }[] = [];
       for (const s of splitData) {
-        const bonus =
-          (s.bonusFromCapital || 0) + (s.bonusFromDividend || 0);
+        const bonus = (s.bonusFromCapital || 0) + (s.bonusFromDividend || 0);
         if (bonus > 0) {
           splitFactors.push({
             date: s.date,
@@ -451,9 +448,7 @@ export class Ticker {
       if (splitFactors.length === 0) return;
 
       // Sort splits from most recent to oldest
-      splitFactors.sort(
-        (a, b) => b.date.getTime() - a.date.getTime(),
-      );
+      splitFactors.sort((a, b) => b.date.getTime() - a.date.getTime());
 
       // Walk backward: for each split, multiply all bars before the
       // split date by the split ratio
@@ -580,7 +575,11 @@ export class Ticker {
    * Get balance sheet with parametric lastN
    */
   async getBalanceSheet(
-    options: { quarterly?: boolean; lastN?: number | string; financialGroup?: string } = {},
+    options: {
+      quarterly?: boolean;
+      lastN?: number | string;
+      financialGroup?: string;
+    } = {},
   ): Promise<BalanceSheet> {
     return getIsYatirimProvider().getFinancialStatements(
       this.symbol,
@@ -595,7 +594,11 @@ export class Ticker {
    * Get income statement with parametric lastN
    */
   async getIncomeStmt(
-    options: { quarterly?: boolean; lastN?: number | string; financialGroup?: string } = {},
+    options: {
+      quarterly?: boolean;
+      lastN?: number | string;
+      financialGroup?: string;
+    } = {},
   ): Promise<IncomeStatement> {
     return getIsYatirimProvider().getFinancialStatements(
       this.symbol,
@@ -610,7 +613,11 @@ export class Ticker {
    * Get cash flow with parametric lastN
    */
   async getCashflow(
-    options: { quarterly?: boolean; lastN?: number | string; financialGroup?: string } = {},
+    options: {
+      quarterly?: boolean;
+      lastN?: number | string;
+      financialGroup?: string;
+    } = {},
   ): Promise<CashFlowStatement> {
     return getIsYatirimProvider().getFinancialStatements(
       this.symbol,

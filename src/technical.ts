@@ -607,10 +607,7 @@ export function calculateLLV(
  *
  * MOM = Close - Close[N periods ago]
  */
-export function calculateMOM(
-  data: OHLCVData[],
-  period: number = 10,
-): number[] {
+export function calculateMOM(data: OHLCVData[], period: number = 10): number[] {
   const closes = data.map((d) => d.close);
   const result: number[] = [];
 
@@ -630,10 +627,7 @@ export function calculateMOM(
  *
  * ROC = ((Close - Close[N]) / Close[N]) * 100
  */
-export function calculateROC(
-  data: OHLCVData[],
-  period: number = 10,
-): number[] {
+export function calculateROC(data: OHLCVData[], period: number = 10): number[] {
   const closes = data.map((d) => d.close);
   const result: number[] = [];
 
@@ -655,10 +649,7 @@ export function calculateROC(
  *
  * Each data point is weighted by its position (most recent has highest weight).
  */
-export function calculateWMA(
-  data: OHLCVData[],
-  period: number = 20,
-): number[] {
+export function calculateWMA(data: OHLCVData[], period: number = 20): number[] {
   const closes = data.map((d) => d.close);
   const result: number[] = [];
   const weightSum = (period * (period + 1)) / 2;
@@ -1319,11 +1310,17 @@ export class TechnicalAnalyzer {
     return calculateTilsonT3(this.data, period, vfactor);
   }
 
-  hhv(period: number = 14, column: "high" | "low" | "close" | "open" = "high"): number[] {
+  hhv(
+    period: number = 14,
+    column: "high" | "low" | "close" | "open" = "high",
+  ): number[] {
     return calculateHHV(this.data, period, column);
   }
 
-  llv(period: number = 14, column: "high" | "low" | "close" | "open" = "low"): number[] {
+  llv(
+    period: number = 14,
+    column: "high" | "low" | "close" | "open" = "low",
+  ): number[] {
     return calculateLLV(this.data, period, column);
   }
 

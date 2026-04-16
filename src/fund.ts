@@ -5,10 +5,7 @@ import {
   FundHistoryItem,
   getTEFASProvider,
 } from "~/providers/tefas";
-import {
-  classifyFundTaxCategory,
-  getWithholdingTaxRate,
-} from "~/tax";
+import { classifyFundTaxCategory, getWithholdingTaxRate } from "~/tax";
 import { TechnicalAnalyzer } from "~/technical";
 import { FundType, OHLCVData } from "~/types";
 
