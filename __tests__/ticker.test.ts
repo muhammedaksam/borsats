@@ -1,4 +1,5 @@
 import { Ticker } from "~/ticker";
+import { resilientTest } from "./helpers/network-utils";
 
 describe("Ticker Integration Tests", () => {
   jest.setTimeout(60000);
@@ -80,47 +81,46 @@ describe("Ticker Integration Tests", () => {
     }
   });
 
-  test("Financial statements - income", async () => {
-    const ticker = new Ticker("THYAO");
-    try {
+  test(
+    "Financial statements - income",
+    resilientTest(async () => {
+      const ticker = new Ticker("THYAO");
       const income = await ticker.incomeStmt;
       expect(income).toBeDefined();
-    } catch (e) {
-      console.warn("Income statement test continuing despite error:", e);
-    }
-  });
+    }),
+    90000,
+  );
 
-  test("Financial statements - balance sheet", async () => {
-    const ticker = new Ticker("THYAO");
-    try {
+  test(
+    "Financial statements - balance sheet",
+    resilientTest(async () => {
+      const ticker = new Ticker("THYAO");
       const bs = await ticker.balanceSheet;
       expect(bs).toBeDefined();
-    } catch (e) {
-      console.warn("Balance sheet test continuing despite error:", e);
-    }
-  });
+    }),
+    90000,
+  );
 
-  test("Financial statements - cashflow", async () => {
-    const ticker = new Ticker("THYAO");
-    try {
+  test(
+    "Financial statements - cashflow",
+    resilientTest(async () => {
+      const ticker = new Ticker("THYAO");
       const cf = await ticker.cashflow;
       expect(cf).toBeDefined();
-    } catch (e) {
-      console.warn("Cashflow test continuing despite error:", e);
-    }
-  });
+    }),
+    90000,
+  );
 
-  test("Quarterly financial statements", async () => {
-    // Use THYAO which has financial data available
-    const ticker = new Ticker("THYAO");
-    try {
+  test(
+    "Quarterly financial statements",
+    resilientTest(async () => {
+      const ticker = new Ticker("THYAO");
       await ticker.quarterlyIncomeStmt;
       await ticker.quarterlyBalanceSheet;
       await ticker.quarterlyCashflow;
-    } catch {
-      // Expected - quarterly data may not always be available
-    }
-  });
+    }),
+    90000,
+  );
 
   test("Dividends property", async () => {
     const ticker = new Ticker("THYAO");
@@ -237,8 +237,9 @@ describe("Ticker Integration Tests", () => {
       console.warn("Earnings dates test continuing:", e);
     }
   });
-  test("Ticker - exhaustive indicators and info (Coverage Boost)", async () => {
-    try {
+  test(
+    "Ticker - exhaustive indicators and info (Coverage Boost)",
+    resilientTest(async () => {
       const t = new Ticker("THYAO");
 
       // Fetch history once and reuse for all indicators to avoid rate limits
@@ -270,45 +271,37 @@ describe("Ticker Integration Tests", () => {
       await t.calendar.catch(() => []);
       await t.etfHolders.catch(() => []);
       await t.isin.catch(() => "");
-    } catch (e) {
-      if (
-        e instanceof Error &&
-        (e.message.includes("timeout") || e.message.includes("Timeout"))
-      ) {
-        console.warn("Skipping exhaustive indicators test due to timeout");
-      } else {
-        throw e;
-      }
-    }
-  }, 120000);
+    }),
+    120000,
+  );
 
-  test("Financial statements - getBalanceSheet with options", async () => {
-    const ticker = new Ticker("THYAO");
-    try {
+  test(
+    "Financial statements - getBalanceSheet with options",
+    resilientTest(async () => {
+      const ticker = new Ticker("THYAO");
       const bs = await ticker.getBalanceSheet({ quarterly: true, lastN: 2 });
       expect(bs).toBeDefined();
-    } catch {
-      // Expected if network fails
-    }
-  });
+    }),
+    90000,
+  );
 
-  test("Financial statements - getIncomeStmt with options", async () => {
-    const ticker = new Ticker("THYAO");
-    try {
+  test(
+    "Financial statements - getIncomeStmt with options",
+    resilientTest(async () => {
+      const ticker = new Ticker("THYAO");
       const income = await ticker.getIncomeStmt({ quarterly: true, lastN: 2 });
       expect(income).toBeDefined();
-    } catch {
-      // Expected if network fails
-    }
-  });
+    }),
+    90000,
+  );
 
-  test("Financial statements - getCashflow with options", async () => {
-    const ticker = new Ticker("THYAO");
-    try {
+  test(
+    "Financial statements - getCashflow with options",
+    resilientTest(async () => {
+      const ticker = new Ticker("THYAO");
       const cf = await ticker.getCashflow({ quarterly: true, lastN: 2 });
       expect(cf).toBeDefined();
-    } catch {
-      // Expected if network fails
-    }
-  });
+    }),
+    90000,
+  );
 });

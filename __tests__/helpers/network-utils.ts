@@ -27,10 +27,15 @@ const TRANSIENT_NETWORK_ERRORS = [
 export function isTransientNetworkError(error: unknown): boolean {
   if (!error) return false;
 
+  const name = error instanceof Error ? error.name : "";
+
   // DataNotAvailableError: fund data can be temporarily unavailable
   // (delisted funds, API maintenance, weekend gaps, etc.)
-  const name = error instanceof Error ? error.name : "";
   if (name === "DataNotAvailableError") return true;
+
+  // APIError wraps underlying network/timeout errors from providers.
+  // In integration tests, these always indicate an unreachable external API.
+  if (name === "APIError") return true;
 
   const message =
     error instanceof Error
