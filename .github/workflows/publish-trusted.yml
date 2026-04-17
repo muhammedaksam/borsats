@@ -25,14 +25,16 @@ jobs:
           package-manager-cache: false
           registry-url: "https://registry.npmjs.org"
 
+      # npm >= 11.5.1 is required for OIDC trusted publishing
+      # npm self-upgrade is broken on ubuntu-24.04 runners (missing promise-retry)
+      # Use npx to bootstrap a fresh npm copy that can perform the upgrade
+      - name: Update npm for trusted publishing
+        run: npx -y npm@latest install -g npm@latest
+
       - name: Install pnpm
         run: |
           npm install -g pnpm@10.23.0
           pnpm --version
-
-      # Ensure npm 11.5.1 or later is installed for trusted publishing support
-      - name: Update npm to latest version
-        run: npm install -g npm@latest
 
       - name: Get pnpm store directory
         shell: bash
