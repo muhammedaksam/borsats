@@ -553,6 +553,176 @@ export function calculateTilsonT3(
 }
 
 /**
+ * Calculate Highest High Value (HHV)
+ *
+ * Returns the highest value of a column over a rolling window.
+ */
+export function calculateHHV(
+  data: OHLCVData[],
+  period: number = 14,
+  column: "high" | "low" | "close" | "open" = "high",
+): number[] {
+  const values = data.map((d) => d[column]);
+  const result: number[] = [];
+
+  for (let i = 0; i < values.length; i++) {
+    if (i < period - 1) {
+      result.push(NaN);
+      continue;
+    }
+    const slice = values.slice(i - period + 1, i + 1);
+    result.push(Math.max(...slice));
+  }
+
+  return result;
+}
+
+/**
+ * Calculate Lowest Low Value (LLV)
+ *
+ * Returns the lowest value of a column over a rolling window.
+ */
+export function calculateLLV(
+  data: OHLCVData[],
+  period: number = 14,
+  column: "high" | "low" | "close" | "open" = "low",
+): number[] {
+  const values = data.map((d) => d[column]);
+  const result: number[] = [];
+
+  for (let i = 0; i < values.length; i++) {
+    if (i < period - 1) {
+      result.push(NaN);
+      continue;
+    }
+    const slice = values.slice(i - period + 1, i + 1);
+    result.push(Math.min(...slice));
+  }
+
+  return result;
+}
+
+/**
+ * Calculate Momentum (MOM)
+ *
+ * MOM = Close - Close[N periods ago]
+ */
+export function calculateMOM(data: OHLCVData[], period: number = 10): number[] {
+  const closes = data.map((d) => d.close);
+  const result: number[] = [];
+
+  for (let i = 0; i < closes.length; i++) {
+    if (i < period) {
+      result.push(NaN);
+    } else {
+      result.push(closes[i] - closes[i - period]);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Calculate Rate of Change (ROC)
+ *
+ * ROC = ((Close - Close[N]) / Close[N]) * 100
+ */
+export function calculateROC(data: OHLCVData[], period: number = 10): number[] {
+  const closes = data.map((d) => d.close);
+  const result: number[] = [];
+
+  for (let i = 0; i < closes.length; i++) {
+    if (i < period || closes[i - period] === 0) {
+      result.push(NaN);
+    } else {
+      result.push(
+        ((closes[i] - closes[i - period]) / closes[i - period]) * 100,
+      );
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Calculate Weighted Moving Average (WMA)
+ *
+ * Each data point is weighted by its position (most recent has highest weight).
+ */
+export function calculateWMA(data: OHLCVData[], period: number = 20): number[] {
+  const closes = data.map((d) => d.close);
+  const result: number[] = [];
+  const weightSum = (period * (period + 1)) / 2;
+
+  for (let i = 0; i < closes.length; i++) {
+    if (i < period - 1) {
+      result.push(NaN);
+      continue;
+    }
+
+    let weightedSum = 0;
+    for (let j = 0; j < period; j++) {
+      weightedSum += closes[i - period + 1 + j] * (j + 1);
+    }
+    result.push(weightedSum / weightSum);
+  }
+
+  return result;
+}
+
+/**
+ * Calculate Double Exponential Moving Average (DEMA)
+ *
+ * DEMA = 2 * EMA - EMA(EMA)
+ */
+export function calculateDEMA(
+  data: OHLCVData[],
+  period: number = 20,
+): number[] {
+  const ema1 = calculateEMA(data, period);
+
+  // Calculate EMA of EMA (need to wrap in OHLCVData-like objects)
+  const emaData: OHLCVData[] = ema1.map((v, i) => ({
+    date: data[i].date,
+    open: v,
+    high: v,
+    low: v,
+    close: v,
+    volume: 0,
+  }));
+  const ema2 = calculateEMA(emaData, period);
+
+  return ema1.map((v, i) => 2 * v - ema2[i]);
+}
+
+/**
+ * Calculate Triple Exponential Moving Average (TEMA)
+ *
+ * TEMA = 3*EMA - 3*EMA(EMA) + EMA(EMA(EMA))
+ */
+export function calculateTEMA(
+  data: OHLCVData[],
+  period: number = 20,
+): number[] {
+  const ema1 = calculateEMA(data, period);
+
+  const wrapAsOHLCV = (values: number[]): OHLCVData[] =>
+    values.map((v, i) => ({
+      date: data[i].date,
+      open: v,
+      high: v,
+      low: v,
+      close: v,
+      volume: 0,
+    }));
+
+  const ema2 = calculateEMA(wrapAsOHLCV(ema1), period);
+  const ema3 = calculateEMA(wrapAsOHLCV(ema2), period);
+
+  return ema1.map((v, i) => 3 * v - 3 * ema2[i] + ema3[i]);
+}
+
+/**
  * Calculate Commodity Channel Index (CCI)
  */
 export function calculateCCI(data: OHLCVData[], period: number = 20): number[] {
@@ -775,6 +945,14 @@ export interface AddIndicatorsOptions {
   supertrendMultiplier?: number;
   cciPeriod?: number;
   williamsRPeriod?: number;
+  // MetaStock indicators
+  hhvPeriod?: number;
+  llvPeriod?: number;
+  momPeriod?: number;
+  rocPeriod?: number;
+  wmaPeriod?: number;
+  demaPeriod?: number;
+  temaPeriod?: number;
 }
 
 /**
@@ -814,6 +992,13 @@ export function addIndicators(
     supertrendMultiplier = 3.0,
     cciPeriod = 20,
     williamsRPeriod = 14,
+    hhvPeriod = 14,
+    llvPeriod = 14,
+    momPeriod = 10,
+    rocPeriod = 10,
+    wmaPeriod = 20,
+    demaPeriod = 20,
+    temaPeriod = 20,
   } = options;
 
   // Calculate all indicators once
@@ -889,6 +1074,50 @@ export function addIndicators(
       case "williamsr":
         calculatedIndicators[`williamsR_${williamsRPeriod}`] =
           calculateWilliamsR(data, williamsRPeriod);
+        break;
+      case "hhv":
+        calculatedIndicators[`hhv_${hhvPeriod}`] = calculateHHV(
+          data,
+          hhvPeriod,
+          "high",
+        );
+        break;
+      case "llv":
+        calculatedIndicators[`llv_${llvPeriod}`] = calculateLLV(
+          data,
+          llvPeriod,
+          "low",
+        );
+        break;
+      case "mom":
+        calculatedIndicators[`mom_${momPeriod}`] = calculateMOM(
+          data,
+          momPeriod,
+        );
+        break;
+      case "roc":
+        calculatedIndicators[`roc_${rocPeriod}`] = calculateROC(
+          data,
+          rocPeriod,
+        );
+        break;
+      case "wma":
+        calculatedIndicators[`wma_${wmaPeriod}`] = calculateWMA(
+          data,
+          wmaPeriod,
+        );
+        break;
+      case "dema":
+        calculatedIndicators[`dema_${demaPeriod}`] = calculateDEMA(
+          data,
+          demaPeriod,
+        );
+        break;
+      case "tema":
+        calculatedIndicators[`tema_${temaPeriod}`] = calculateTEMA(
+          data,
+          temaPeriod,
+        );
         break;
     }
   }
@@ -988,6 +1217,15 @@ export class TechnicalAnalyzer {
     // ADX
     result.adx_14 = this.adx(14)[lastIdx];
 
+    // MetaStock indicators
+    result.mom_10 = this.mom(10)[lastIdx];
+    result.roc_10 = this.roc(10)[lastIdx];
+    result.wma_20 = this.wma(20)[lastIdx];
+    result.dema_20 = this.dema(20)[lastIdx];
+    result.tema_20 = this.tema(20)[lastIdx];
+    result.hhv_14 = this.hhv(14)[lastIdx];
+    result.llv_14 = this.llv(14)[lastIdx];
+
     // Stoch
     const stoch = this.stochastic()[lastIdx];
     result.stoch_k = stoch.k;
@@ -1070,6 +1308,40 @@ export class TechnicalAnalyzer {
 
   tilsonT3(period = 5, vfactor = 0.7): number[] {
     return calculateTilsonT3(this.data, period, vfactor);
+  }
+
+  hhv(
+    period: number = 14,
+    column: "high" | "low" | "close" | "open" = "high",
+  ): number[] {
+    return calculateHHV(this.data, period, column);
+  }
+
+  llv(
+    period: number = 14,
+    column: "high" | "low" | "close" | "open" = "low",
+  ): number[] {
+    return calculateLLV(this.data, period, column);
+  }
+
+  mom(period: number = 10): number[] {
+    return calculateMOM(this.data, period);
+  }
+
+  roc(period: number = 10): number[] {
+    return calculateROC(this.data, period);
+  }
+
+  wma(period: number = 20): number[] {
+    return calculateWMA(this.data, period);
+  }
+
+  dema(period: number = 20): number[] {
+    return calculateDEMA(this.data, period);
+  }
+
+  tema(period: number = 20): number[] {
+    return calculateTEMA(this.data, period);
   }
 
   cci(period = 20): number[] {

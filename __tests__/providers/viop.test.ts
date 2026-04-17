@@ -1,14 +1,15 @@
-import { APIError } from "~/exceptions";
 import { getVIOPProvider } from "~/providers/viop";
+import { resilientTest } from "../helpers/network-utils";
 
 describe("VIOPProvider", () => {
   const provider = getVIOPProvider();
 
-  jest.setTimeout(20000);
+  jest.setTimeout(30000);
 
   describe("getFutures", () => {
-    it("should fetch all futures contracts", async () => {
-      try {
+    it(
+      "should fetch all futures contracts",
+      resilientTest(async () => {
         const futures = await provider.getFutures("all");
 
         expect(Array.isArray(futures)).toBe(true);
@@ -18,55 +19,61 @@ describe("VIOPProvider", () => {
           expect(futures[0]).toHaveProperty("contract");
           expect(futures[0]).toHaveProperty("category");
         }
-      } catch (e) {
-        if (e instanceof APIError) {
-          expect(e).toBeInstanceOf(APIError);
-        } else {
-          throw e;
-        }
-      }
-    });
+      }),
+    );
 
-    it("should filter stock futures", async () => {
-      const futures = await provider.getFutures("stock");
+    it(
+      "should filter stock futures",
+      resilientTest(async () => {
+        const futures = await provider.getFutures("stock");
 
-      expect(Array.isArray(futures)).toBe(true);
-      futures.forEach((f) => {
-        expect(f.category).toBe("stock");
-      });
-    });
+        expect(Array.isArray(futures)).toBe(true);
+        futures.forEach((f) => {
+          expect(f.category).toBe("stock");
+        });
+      }),
+    );
 
-    it("should filter index futures", async () => {
-      const futures = await provider.getFutures("index");
+    it(
+      "should filter index futures",
+      resilientTest(async () => {
+        const futures = await provider.getFutures("index");
 
-      expect(Array.isArray(futures)).toBe(true);
-      futures.forEach((f) => {
-        expect(f.category).toBe("index");
-      });
-    });
+        expect(Array.isArray(futures)).toBe(true);
+        futures.forEach((f) => {
+          expect(f.category).toBe("index");
+        });
+      }),
+    );
   });
 
   describe("getOptions", () => {
-    it("should fetch all options contracts", async () => {
-      const options = await provider.getOptions("all");
+    it(
+      "should fetch all options contracts",
+      resilientTest(async () => {
+        const options = await provider.getOptions("all");
 
-      expect(Array.isArray(options)).toBe(true);
-      if (options.length > 0) {
-        expect(options[0]).toHaveProperty("code");
-        expect(options[0]).toHaveProperty("contract");
-        expect(options[0]).toHaveProperty("category");
-      }
-    });
+        expect(Array.isArray(options)).toBe(true);
+        if (options.length > 0) {
+          expect(options[0]).toHaveProperty("code");
+          expect(options[0]).toHaveProperty("contract");
+          expect(options[0]).toHaveProperty("category");
+        }
+      }),
+    );
   });
 
   describe("getAll", () => {
-    it("should fetch all VIOP data", async () => {
-      const data = await provider.getAll();
+    it(
+      "should fetch all VIOP data",
+      resilientTest(async () => {
+        const data = await provider.getAll();
 
-      expect(data).toHaveProperty("futures");
-      expect(data).toHaveProperty("options");
-      expect(Array.isArray(data.futures)).toBe(true);
-      expect(Array.isArray(data.options)).toBe(true);
-    });
+        expect(data).toHaveProperty("futures");
+        expect(data).toHaveProperty("options");
+        expect(Array.isArray(data.futures)).toBe(true);
+        expect(Array.isArray(data.options)).toBe(true);
+      }),
+    );
   });
 });

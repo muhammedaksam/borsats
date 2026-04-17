@@ -19,7 +19,7 @@ describe("BTCTurkProvider", () => {
         expect(pairs).toContain("BTCTRY");
         expect(pairs).toContain("ETHTRY");
       }),
-      15000,
+      60000,
     );
 
     it(
@@ -35,7 +35,7 @@ describe("BTCTurkProvider", () => {
           expect(pair).toMatch(/TRY$/);
         });
       }),
-      15000,
+      60000,
     );
 
     it(
@@ -50,7 +50,7 @@ describe("BTCTurkProvider", () => {
           });
         }
       }),
-      15000,
+      60000,
     );
   });
 
@@ -84,7 +84,7 @@ describe("BTCTurkProvider", () => {
           expect(typeof ticker.low).toBe("number");
         }
       }),
-      15000,
+      60000,
     );
 
     it(
@@ -98,7 +98,7 @@ describe("BTCTurkProvider", () => {
         expect(typeof ticker.last).toBe("number");
         expect(ticker.last).toBeGreaterThan(0);
       }),
-      15000,
+      60000,
     );
 
     it("should throw error for invalid pair", async () => {
@@ -137,7 +137,7 @@ describe("BTCTurkProvider", () => {
         expect(typeof firstItem.close).toBe("number");
         expect(typeof firstItem.volume).toBe("number");
       }),
-      15000,
+      60000,
     );
 
     it(
@@ -156,7 +156,7 @@ describe("BTCTurkProvider", () => {
         expect(history).toBeInstanceOf(Array);
         expect(history.length).toBeGreaterThan(0);
       }),
-      15000,
+      60000,
     );
 
     it(
@@ -174,7 +174,7 @@ describe("BTCTurkProvider", () => {
 
         expect(history4h).toBeInstanceOf(Array);
       }),
-      15000,
+      60000,
     );
 
     it("should throw error for invalid pair", async () => {

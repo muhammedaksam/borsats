@@ -10,6 +10,7 @@ import { Holding, Period } from "~/types";
 export class Portfolio {
   private holdings: Map<string, Holding> = new Map();
   private benchmark: string = "XU100";
+  private targetWeights: Record<string, number> = {};
 
   /**
    * Add a holding to the portfolio
@@ -178,11 +179,20 @@ export class Portfolio {
   toDict(): {
     benchmark: string;
     holdings: Array<Holding & { symbol: string }>;
+    targetWeights?: Record<string, number>;
   } {
-    return {
+    const result: {
+      benchmark: string;
+      holdings: Array<Holding & { symbol: string }>;
+      targetWeights?: Record<string, number>;
+    } = {
       benchmark: this.benchmark,
       holdings: Array.from(this.holdings.values()),
     };
+    if (Object.keys(this.targetWeights).length > 0) {
+      result.targetWeights = { ...this.targetWeights };
+    }
+    return result;
   }
 
   /**
@@ -191,6 +201,7 @@ export class Portfolio {
   static fromDict(data: {
     benchmark?: string;
     holdings: Array<Holding & { symbol: string }>;
+    targetWeights?: Record<string, number>;
   }): Portfolio {
     const portfolio = new Portfolio();
 
@@ -205,6 +216,10 @@ export class Portfolio {
         assetType: holding.assetType,
         purchaseDate: holding.purchaseDate,
       });
+    }
+
+    if (data.targetWeights) {
+      portfolio.setTargetWeights(data.targetWeights);
     }
 
     return portfolio;
@@ -671,5 +686,155 @@ export class Portfolio {
     }
 
     return result;
+  }
+
+  /**
+   * Set target weights for portfolio rebalancing
+   * @param weights Record of symbol → target weight (0-1 scale, must sum to ~1.0)
+   */
+  setTargetWeights(weights: Record<string, number>): Portfolio {
+    this.targetWeights = { ...weights };
+    return this;
+  }
+
+  /**
+   * Get target weights
+   */
+  getTargetWeights(): Record<string, number> {
+    return { ...this.targetWeights };
+  }
+
+  /**
+   * Calculate drift from target weights.
+   * Returns array of {symbol, currentWeight, targetWeight, drift, driftPct}
+   */
+  async drift(): Promise<
+    Array<{
+      symbol: string;
+      currentWeight: number;
+      targetWeight: number;
+      drift: number;
+      driftPct: number;
+    }>
+  > {
+    if (Object.keys(this.targetWeights).length === 0) {
+      throw new Error("No target weights set. Use setTargetWeights() first.");
+    }
+
+    const currentWeights = await this.weights;
+    const result: Array<{
+      symbol: string;
+      currentWeight: number;
+      targetWeight: number;
+      drift: number;
+      driftPct: number;
+    }> = [];
+
+    // Iterate over all symbols in target weights
+    for (const [symbol, target] of Object.entries(this.targetWeights)) {
+      const current = currentWeights[symbol] || 0;
+      const drift = current - target;
+      const driftPct =
+        target > 0 ? (drift / target) * 100 : current > 0 ? Infinity : 0;
+
+      result.push({
+        symbol,
+        currentWeight: Math.round(current * 10000) / 10000,
+        targetWeight: target,
+        drift: Math.round(drift * 10000) / 10000,
+        driftPct: Math.round(driftPct * 100) / 100,
+      });
+    }
+
+    // Also check if portfolio has symbols not in targets
+    for (const symbol of Object.keys(currentWeights)) {
+      if (!(symbol in this.targetWeights)) {
+        const current = currentWeights[symbol];
+        result.push({
+          symbol,
+          currentWeight: Math.round(current * 10000) / 10000,
+          targetWeight: 0,
+          drift: Math.round(current * 10000) / 10000,
+          driftPct: 100,
+        });
+      }
+    }
+
+    return result.sort((a, b) => Math.abs(b.driftPct) - Math.abs(a.driftPct));
+  }
+
+  /**
+   * Generate a rebalancing plan.
+   * Returns trades needed to bring portfolio back to target weights.
+   *
+   * @param threshold Minimum drift percentage to trigger a trade (default: 0)
+   */
+  async rebalancePlan(threshold: number = 0): Promise<
+    Array<{
+      symbol: string;
+      action: "buy" | "sell";
+      currentWeight: number;
+      targetWeight: number;
+      weightDelta: number;
+      valueDelta: number;
+    }>
+  > {
+    const driftData = await this.drift();
+    const totalValue = await this.value;
+
+    const trades: Array<{
+      symbol: string;
+      action: "buy" | "sell";
+      currentWeight: number;
+      targetWeight: number;
+      weightDelta: number;
+      valueDelta: number;
+    }> = [];
+
+    for (const d of driftData) {
+      if (Math.abs(d.driftPct) < threshold) continue;
+      if (Math.abs(d.drift) < 0.0001) continue; // Skip negligible drift
+
+      const weightDelta = d.targetWeight - d.currentWeight;
+      const valueDelta = weightDelta * totalValue;
+
+      trades.push({
+        symbol: d.symbol,
+        action: weightDelta > 0 ? "buy" : "sell",
+        currentWeight: d.currentWeight,
+        targetWeight: d.targetWeight,
+        weightDelta: Math.round(weightDelta * 10000) / 10000,
+        valueDelta: Math.round(valueDelta * 100) / 100,
+      });
+    }
+
+    return trades.sort(
+      (a, b) => Math.abs(b.valueDelta) - Math.abs(a.valueDelta),
+    );
+  }
+
+  /**
+   * Execute rebalancing (dry-run by default).
+   * Returns the rebalance plan without actually executing trades.
+   *
+   * @param threshold Minimum drift % to trigger trades (default: 5)
+   * @param dryRun If true, just return the plan without modifying portfolio (default: true)
+   */
+  async rebalance(
+    threshold: number = 5,
+    dryRun: boolean = true,
+  ): Promise<{
+    plan: Array<{
+      symbol: string;
+      action: "buy" | "sell";
+      currentWeight: number;
+      targetWeight: number;
+      weightDelta: number;
+      valueDelta: number;
+    }>;
+    executed: boolean;
+  }> {
+    const plan = await this.rebalancePlan(threshold);
+    return { plan, executed: !dryRun };
   }
 }

@@ -611,6 +611,88 @@ export class TEFASProvider extends BaseProvider {
     return [];
   }
 
+  /**
+   * Parse Turkish decimal string (comma as decimal separator) to number.
+   */
+  static parseTurkishDecimal(value: string | null | undefined): number | null {
+    if (value === null || value === undefined) return null;
+    const s = String(value).trim();
+    if (!s) return null;
+    try {
+      const num = parseFloat(s.replace(",", "."));
+      return isNaN(num) ? null : num;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Get management fee data for funds.
+   */
+  async getManagementFees(
+    fundType: FundType = "YAT",
+    founder?: string,
+  ): Promise<
+    Array<{
+      fund_code: string;
+      name: string;
+      fund_category: string;
+      founder_code: string;
+      applied_fee: number | null;
+      prospectus_fee: number | null;
+      max_expense_ratio: number | null;
+      annual_return: number | null;
+    }>
+  > {
+    const url = `${TEFASProvider.BASE_URL}/BindComparisonManagementFees`;
+
+    const body = new URLSearchParams({
+      fontip: fundType,
+      sfontur: "",
+      kurucukod: founder || "",
+      fongrup: "",
+      fonturkod: "",
+      fonunvantip: "",
+      islemdurum: "1",
+    });
+
+    try {
+      const response = await this.client.post(url, body, {
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+      });
+
+      const result = response.data;
+      const allFunds = result?.data || [];
+
+      return allFunds.map((fund: Record<string, string | number | null>) => ({
+        fund_code: fund.FONKODU || "",
+        name: fund.FONUNVAN || "",
+        fund_category: fund.FONTURACIKLAMA || "",
+        founder_code: fund.KURUCUKODU || "",
+        applied_fee: TEFASProvider.parseTurkishDecimal(
+          fund.UYGULANANYU1Y as string,
+        ),
+        prospectus_fee: TEFASProvider.parseTurkishDecimal(
+          fund.FONICTUZUKYU1G as string,
+        ),
+        max_expense_ratio: TEFASProvider.parseTurkishDecimal(
+          fund.FONTOPGIDERKESORAN as string,
+        ),
+        annual_return:
+          fund.YILLIKGETIRI !== null && fund.YILLIKGETIRI !== undefined
+            ? Number(fund.YILLIKGETIRI)
+            : null,
+      }));
+    } catch (err) {
+      throw new APIError(
+        `Failed to fetch management fees: ${(err as Error).message}`,
+      );
+    }
+  }
+
   private _formatDateTR(date: Date): string {
     const d = String(date.getDate()).padStart(2, "0");
     const m = String(date.getMonth() + 1).padStart(2, "0");

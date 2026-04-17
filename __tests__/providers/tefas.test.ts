@@ -81,6 +81,16 @@ describe("TEFASProvider", () => {
     );
   });
 
+  describe("getManagementFees", () => {
+    it(
+      "should fetch management fees",
+      resilientTest(async () => {
+        const fees = await provider.getManagementFees("YAT");
+        expect(Array.isArray(fees)).toBe(true);
+      }),
+    );
+  });
+
   describe("TEFAS - Mocked parsing tests", () => {
     test("Mocked getFundDetail parsing", async () => {
       const provider = new MockTEFASProvider();

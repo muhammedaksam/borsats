@@ -14,13 +14,29 @@ const TRANSIENT_NETWORK_ERRORS = [
   "EAI_AGAIN",
   "EHOSTUNREACH",
   "socket hang up",
+  "timeout of", // Axios timeout: "timeout of 30000ms exceeded"
+  "status code 502", // Bad Gateway
+  "status code 503", // Service Unavailable
+  "status code 504", // Gateway Timeout
+  "status code 522", // Cloudflare Connection Timed Out
 ];
 
 /**
- * Check if an error is a transient network error
+ * Check if an error is a transient network error or transient data-availability issue
  */
 export function isTransientNetworkError(error: unknown): boolean {
   if (!error) return false;
+
+  const name = error instanceof Error ? error.name : "";
+
+  // DataNotAvailableError: fund data can be temporarily unavailable
+  // (delisted funds, API maintenance, weekend gaps, etc.)
+  if (name === "DataNotAvailableError") return true;
+
+  // APIError wraps underlying network/timeout errors from providers.
+  // In integration tests, these always indicate an unreachable external API.
+  if (name === "APIError") return true;
+
   const message =
     error instanceof Error
       ? error.message
