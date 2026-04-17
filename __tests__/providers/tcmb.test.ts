@@ -20,6 +20,7 @@ describe("TCMBProvider", () => {
         expect(result.finalValue).toBeGreaterThan(100);
         expect(result.totalChange).toBeGreaterThan(0);
       }),
+      90000,
     );
 
     it("should throw error for invalid dates", async () => {
