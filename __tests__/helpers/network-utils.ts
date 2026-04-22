@@ -50,6 +50,26 @@ export function isTransientNetworkError(error: unknown): boolean {
 }
 
 /**
+ * Keep CI logs readable by truncating noisy provider payload previews.
+ */
+function formatTransientErrorMessage(error: unknown, maxLength = 200): string {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : String(error);
+
+  const compact = message
+    .replace(/\s*Body preview:\s*"[\s\S]*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (compact.length <= maxLength) return compact;
+  return `${compact.slice(0, Math.max(0, maxLength - 3))}...`;
+}
+
+/**
  * Wraps an async test function to skip on transient network errors.
  * Use for tests that call external APIs which may be flaky in CI.
  *
@@ -68,7 +88,7 @@ export function skipOnNetworkError<T>(
     } catch (error) {
       if (isTransientNetworkError(error)) {
         console.warn(
-          `⚠️  Skipping test due to transient network error: ${(error as Error).message}`,
+          `⚠️  Skipping test due to transient network error: ${formatTransientErrorMessage(error)}`,
         );
         return; // Jest treats this as a pass
       }
@@ -102,7 +122,7 @@ export function withRetry<T>(
         if (attempt < maxRetries && isTransientNetworkError(error)) {
           const delay = delayMs * Math.pow(2, attempt);
           console.warn(
-            `⚠️  Retry ${attempt + 1}/${maxRetries} after ${delay}ms: ${(error as Error).message}`,
+            `⚠️  Retry ${attempt + 1}/${maxRetries} after ${delay}ms: ${formatTransientErrorMessage(error)}`,
           );
           await new Promise((r) => setTimeout(r, delay));
         }

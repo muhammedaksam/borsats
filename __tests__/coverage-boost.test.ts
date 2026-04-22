@@ -448,16 +448,21 @@ describe("Coverage Boost Tests", () => {
     });
 
     test("executeWithRetry logic", async () => {
+      const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
       let count = 0;
       const op = async () => {
         count++;
         if (count < 2) throw new APIError("429 rate limit");
         return "success";
       };
-      // @ts-expect-error accessing private
-      const res = await tv.executeWithRetry(op, 3, 10);
-      expect(res).toBe("success");
-      expect(count).toBe(2);
+      try {
+        // @ts-expect-error accessing private
+        const res = await tv.executeWithRetry(op, 3, 10);
+        expect(res).toBe("success");
+        expect(count).toBe(2);
+      } finally {
+        warnSpy.mockRestore();
+      }
     });
   });
 
