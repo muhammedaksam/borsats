@@ -48,11 +48,76 @@ import {
 import { cleanSymbol } from "~/utils/helpers";
 
 /**
+ * Compute backward dividend-adjusted close prices (yfinance "Adj Close").
+ *
+ * Assumes `closePrices` is already split-adjusted (TradingView default).
+ * For each ex-dividend date `t` with close `C_t` and amount `D`, all prices
+ * strictly before `t` are multiplied by `(C_t - D) / C_t`. This yields a
+ * total-return price series: what you'd have if every dividend were
+ * reinvested on its ex-date.
+ *
+ * @param closePrices - Split-adjusted close prices
+ * @param closeDates - Corresponding dates for each close price
+ * @param dividends - Dividend data with date and dividend fields
+ * @returns Adjusted close values with the same length as closePrices
+ */
+export function computeAdjClose(
+  closePrices: number[],
+  closeDates: Date[],
+  dividends: DividendData[],
+): number[] {
+  if (
+    closePrices.length === 0 ||
+    !dividends ||
+    dividends.length === 0
+  ) {
+    return [...closePrices];
+  }
+
+  const factor = new Array<number>(closePrices.length).fill(1.0);
+
+  // Sort dividends oldest → newest so compounding is correct
+  const sortedDivs = [...dividends].sort(
+    (a, b) => a.date.getTime() - b.date.getTime(),
+  );
+
+  for (const div of sortedDivs) {
+    const amount = div.dividend;
+    if (amount === undefined || amount === null || amount <= 0) {
+      continue;
+    }
+
+    // Match by calendar date (YYYY-MM-DD string comparison)
+    const divDateStr = div.date.toISOString().split("T")[0];
+    let matchIdx = -1;
+    for (let i = 0; i < closeDates.length; i++) {
+      if (closeDates[i].toISOString().split("T")[0] === divDateStr) {
+        matchIdx = i;
+        break;
+      }
+    }
+
+    if (matchIdx === -1) continue;
+
+    const closeOnEx = closePrices[matchIdx];
+    if (closeOnEx <= 0) continue;
+
+    const adj = (closeOnEx - amount) / closeOnEx;
+    for (let i = 0; i < matchIdx; i++) {
+      factor[i] *= adj;
+    }
+  }
+
+  return closePrices.map((price, i) => price * factor[i]);
+}
+
+/**
  * Extended OHLCV Data with Corporate Actions
  */
 export type OHLCVWithActions = OHLCVData & {
   dividend?: number;
   split?: number;
+  adjClose?: number;
 };
 
 /**
@@ -390,6 +455,7 @@ export class Ticker {
       end?: Date | string;
       actions?: boolean;
       adjust?: boolean;
+      autoAdjust?: boolean;
     } = {},
   ): Promise<OHLCVWithActions[]> {
     const { period = "1mo", interval = "1d", adjust = true } = options;
@@ -415,6 +481,21 @@ export class Ticker {
     // Reverse split adjustments if unadjusted prices are requested
     if (!adjust && history.length > 0) {
       await this._unadjustPrices(history);
+    }
+
+    // Compute Adj Close (split + dividend adjusted, yfinance-style)
+    if (options.autoAdjust && history.length > 0) {
+      try {
+        const divs = await this.dividends.catch(() => [] as DividendData[]);
+        const closes = history.map((h) => h.close);
+        const dates = history.map((h) => h.date);
+        const adjCloses = computeAdjClose(closes, dates, divs);
+        for (let i = 0; i < history.length; i++) {
+          history[i].adjClose = adjCloses[i];
+        }
+      } catch {
+        // Ignore — return data without adjClose
+      }
     }
 
     return history;
