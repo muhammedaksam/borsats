@@ -21,6 +21,7 @@
     "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true,
     "allowSyntheticDefaultImports": true,
+    "types": ["node", "jest"],
     "baseUrl": ".",
     "paths": {
       "~/*": ["./src/*"]
