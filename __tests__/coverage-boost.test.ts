@@ -403,10 +403,13 @@ describe("Coverage Boost Tests", () => {
       }),
     );
 
-    test("search method logic", async () => {
-      const results = await tefas.search("TE1", 5);
-      expect(Array.isArray(results)).toBe(true);
-    });
+    test(
+      "search method logic",
+      resilientTest(async () => {
+        const results = await tefas.search("TE1", 5);
+        expect(Array.isArray(results)).toBe(true);
+      }),
+    );
   });
 
   describe("TradingViewProvider Coverage", () => {
