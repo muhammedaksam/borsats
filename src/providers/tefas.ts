@@ -1,9 +1,10 @@
 import https from "https";
+import { AxiosResponse } from "axios";
 
 import { APIError, DataNotAvailableError } from "~/exceptions";
 import { BaseProvider } from "~/providers/base";
 import { FundType } from "~/types";
-import { TTL } from "~/utils/helpers";
+import { sleep, TTL } from "~/utils/helpers";
 
 export interface FundDetail {
   fund_code: string;
@@ -144,6 +145,98 @@ export class TEFASProvider extends BaseProvider {
   }
 
   /**
+   * Parse TEFAS JSON response with descriptive errors for non-JSON bodies.
+   *
+   * TEFAS occasionally returns an empty body or an HTML maintenance/WAF page
+   * with HTTP 200 instead of JSON. The stock `response.data` masks this —
+   * this method surfaces the HTTP status, content type, and a body preview
+   * so callers can diagnose the upstream failure.
+   */
+  static _safeJson(response: AxiosResponse, endpoint: string): unknown {
+    const status = response.status;
+    const contentType = String(response.headers["content-type"] || "");
+    const body = typeof response.data === "string" ? response.data : "";
+
+    // Empty body check
+    if (
+      response.data === null ||
+      response.data === undefined ||
+      (typeof response.data === "string" && !response.data.trim())
+    ) {
+      throw new APIError(
+        `TEFAS ${endpoint} returned an empty response ` +
+          `(HTTP ${status}, content-type=${JSON.stringify(contentType)}). ` +
+          "Upstream API may be down or rate-limited.",
+      );
+    }
+
+    // Non-JSON content-type check
+    if (!contentType.toLowerCase().includes("json")) {
+      const preview =
+        typeof body === "string"
+          ? body.slice(0, 200)
+          : JSON.stringify(response.data).slice(0, 200);
+      throw new APIError(
+        `TEFAS ${endpoint} returned non-JSON response ` +
+          `(HTTP ${status}, content-type=${JSON.stringify(contentType)}). ` +
+          `Body preview: ${JSON.stringify(preview)}`,
+      );
+    }
+
+    // If axios already parsed it as an object, return it
+    if (typeof response.data === "object") {
+      return response.data;
+    }
+
+    // Try parsing string body as JSON
+    try {
+      return JSON.parse(body);
+    } catch (e) {
+      const preview = body.slice(0, 200);
+      throw new APIError(
+        `TEFAS ${endpoint} returned malformed JSON ` +
+          `(HTTP ${status}, content-type=${JSON.stringify(contentType)}): ` +
+          `${(e as Error).message}. Body preview: ${JSON.stringify(preview)}`,
+      );
+    }
+  }
+
+  /**
+   * POST to TEFAS and parse JSON, retrying transient WAF blocks.
+   *
+   * TEFAS WAF intermittently returns empty bodies or HTML maintenance
+   * pages with HTTP 200. Retries with exponential backoff (0.5s, 1s, 2s)
+   * when _safeJson detects such non-JSON responses.
+   */
+  async _postJson(
+    url: string,
+    data: string | URLSearchParams,
+    endpoint: string,
+    headers?: Record<string, string>,
+    maxRetries: number = 3,
+  ): Promise<unknown> {
+    let lastError: APIError | null = null;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      if (attempt > 0) {
+        await sleep(500 * Math.pow(2, attempt - 1));
+      }
+
+      const response = await this.client.post(url, data, { headers });
+      try {
+        return TEFASProvider._safeJson(response, endpoint);
+      } catch (e) {
+        if (e instanceof APIError) {
+          lastError = e;
+        } else {
+          throw e;
+        }
+      }
+    }
+
+    throw lastError!;
+  }
+
+  /**
    * Get detailed information about a fund.
    */
   async getFundDetail(
@@ -166,10 +259,18 @@ export class TEFASProvider extends BaseProvider {
     };
 
     try {
-      const response = await this.client.post(url, data, { headers });
-      const result = response.data;
+      const result = (await this._postJson(
+        url,
+        data,
+        "GetAllFundAnalyzeData",
+        headers,
+      )) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-      if (!result || !result.fundInfo || result.fundInfo.length === 0) {
+      if (
+        !result ||
+        !result.fundInfo ||
+        (result.fundInfo as unknown[]).length === 0
+      ) {
         throw new DataNotAvailableError(`No data for fund: ${code}`);
       }
 
@@ -334,14 +435,10 @@ export class TEFASProvider extends BaseProvider {
     });
 
     try {
-      const response = await this.client.post(url, body, {
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-          "X-Requested-With": "XMLHttpRequest",
-        },
-      });
-
-      const result = response.data;
+      const result = (await this._postJson(url, body, "BindHistoryAllocation", {
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "X-Requested-With": "XMLHttpRequest",
+      })) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
       if (!result || !result.data) {
         throw new DataNotAvailableError(`No allocation data for fund: ${code}`);
       }
@@ -457,14 +554,15 @@ export class TEFASProvider extends BaseProvider {
     });
 
     try {
-      const response = await this.client.post(url, body, {
-        headers: {
+      const result = (await this._postJson(
+        url,
+        body,
+        "BindComparisonFundReturns",
+        {
           "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
           "X-Requested-With": "XMLHttpRequest",
         },
-      });
-
-      const result = response.data;
+      )) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
       const allFunds = result.data || [];
       const queryLower = query.toLocaleLowerCase("tr-TR");
 
@@ -571,21 +669,18 @@ export class TEFASProvider extends BaseProvider {
     };
 
     try {
-      const response = await this.client.post(url, body, { headers });
+      const result = (await this._postJson(
+        url,
+        body,
+        "BindHistoryInfo",
+        headers,
+      )) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-      // Check WAF block (HTML response)
-      if (
-        typeof response.data === "string" &&
-        response.data.includes("<!DOCTYPE html>")
-      ) {
-        throw new APIError("TEFAS WAF blocked the request");
-      }
-
-      const result = response.data;
       if (!result.data) return [];
 
       const records: FundHistoryItem[] = [];
-      for (const item of result.data) {
+      for (const item of result.data as Record<string, any>[]) {
+        // eslint-disable-line @typescript-eslint/no-explicit-any
         const timestamp = Number(item.TARIH);
         if (timestamp > 0) {
           records.push({
@@ -598,7 +693,7 @@ export class TEFASProvider extends BaseProvider {
       }
       return records;
     } catch (err) {
-      if ((err as Error).message.includes("WAF")) throw err;
+      if (err instanceof APIError) throw err;
       throw new APIError(`Failed chunk fetch: ${(err as Error).message}`);
     }
   }
@@ -657,17 +752,19 @@ export class TEFASProvider extends BaseProvider {
     });
 
     try {
-      const response = await this.client.post(url, body, {
-        headers: {
+      const result = (await this._postJson(
+        url,
+        body,
+        "BindComparisonManagementFees",
+        {
           "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
           "X-Requested-With": "XMLHttpRequest",
         },
-      });
+      )) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+      const allFunds = (result?.data || []) as Record<string, any>[]; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-      const result = response.data;
-      const allFunds = result?.data || [];
-
-      return allFunds.map((fund: Record<string, string | number | null>) => ({
+      return allFunds.map((fund: Record<string, any>) => ({
+        // eslint-disable-line @typescript-eslint/no-explicit-any
         fund_code: fund.FONKODU || "",
         name: fund.FONUNVAN || "",
         fund_category: fund.FONTURACIKLAMA || "",

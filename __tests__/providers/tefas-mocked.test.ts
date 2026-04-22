@@ -54,6 +54,8 @@ describe("TEFASProvider (Mocked) — Coverage Boost", () => {
     test("parses successful response", async () => {
       jest.spyOn(axios, "create").mockReturnValue({
         post: jest.fn().mockResolvedValue({
+          status: 200,
+          headers: { "content-type": "application/json" },
           data: {
             data: [
               {
@@ -103,6 +105,8 @@ describe("TEFASProvider (Mocked) — Coverage Boost", () => {
     test("handles empty data array", async () => {
       jest.spyOn(axios, "create").mockReturnValue({
         post: jest.fn().mockResolvedValue({
+          status: 200,
+          headers: { "content-type": "application/json" },
           data: { data: [] },
         }),
         get: jest.fn(),
@@ -118,6 +122,8 @@ describe("TEFASProvider (Mocked) — Coverage Boost", () => {
     test("handles missing data field", async () => {
       jest.spyOn(axios, "create").mockReturnValue({
         post: jest.fn().mockResolvedValue({
+          status: 200,
+          headers: { "content-type": "application/json" },
           data: {},
         }),
         get: jest.fn(),

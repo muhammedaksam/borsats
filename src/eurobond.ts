@@ -2,7 +2,81 @@ import * as cheerio from "cheerio";
 
 import { APIError } from "~/exceptions";
 import { BaseProvider } from "~/providers/base";
+import {
+  EurobondHistoryRow,
+  getEurobondProvider as getZiraatProvider,
+} from "~/providers/ziraat-eurobond";
 import { TTL } from "~/utils/helpers";
+
+export type { EurobondHistoryRow } from "~/providers/ziraat-eurobond";
+
+const PERIOD_DAYS: Record<string, number | null> = {
+  "1mo": 30,
+  "3mo": 90,
+  "6mo": 180,
+  "1y": 365,
+  "2y": 365 * 2,
+  "3y": 365 * 3,
+  "5y": 365 * 5,
+  "10y": 365 * 10,
+  ytd: null, // handled separately
+  max: 365 * 15,
+};
+
+/**
+ * Parse start/end argument (accepts string YYYY-MM-DD, DD.MM.YYYY, DD-MM-YYYY, DD/MM/YYYY, YYYY/MM/DD, or Date).
+ */
+function parseDateArg(value: string | Date): Date {
+  if (value instanceof Date) return value;
+
+  // YYYY-MM-DD
+  const iso = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) {
+    return new Date(parseInt(iso[1]), parseInt(iso[2]) - 1, parseInt(iso[3]));
+  }
+
+  // YYYY/MM/DD
+  const slash = value.match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
+  if (slash) {
+    return new Date(
+      parseInt(slash[1]),
+      parseInt(slash[2]) - 1,
+      parseInt(slash[3]),
+    );
+  }
+
+  // DD.MM.YYYY (Turkish dotted)
+  const dotted = value.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (dotted) {
+    return new Date(
+      parseInt(dotted[3]),
+      parseInt(dotted[2]) - 1,
+      parseInt(dotted[1]),
+    );
+  }
+
+  // DD-MM-YYYY
+  const dashed = value.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (dashed) {
+    return new Date(
+      parseInt(dashed[3]),
+      parseInt(dashed[2]) - 1,
+      parseInt(dashed[1]),
+    );
+  }
+
+  // DD/MM/YYYY
+  const slashedDMY = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (slashedDMY) {
+    return new Date(
+      parseInt(slashedDMY[3]),
+      parseInt(slashedDMY[2]) - 1,
+      parseInt(slashedDMY[1]),
+    );
+  }
+
+  throw new Error(`Could not parse date: ${value}`);
+}
 
 // Ziraat Bank Eurobond API endpoint
 const ZIRAAT_URL =
@@ -259,5 +333,62 @@ export class Eurobond {
    */
   async info(): Promise<EurobondData | null> {
     return this.getData();
+  }
+
+  /**
+   * Fetch daily historical bid/ask prices and yields.
+   *
+   * @param options.period - Lookback window ending today. One of 1mo, 3mo, 6mo, 1y, 2y, 3y, 5y, 10y, ytd, max.
+   *                         Ignored if `start` is given.
+   * @param options.start - Start date (string "YYYY-MM-DD" or Date).
+   * @param options.end - End date, defaults to today.
+   * @param options.skipWeekends - Skip Sat/Sun (API returns zeros on weekends). Default true.
+   * @returns Array of EurobondHistoryRow sorted by date ascending.
+   *          Holidays and suspended trading days (bidPrice == 0) are dropped.
+   */
+  async history(
+    options: {
+      period?: string;
+      start?: string | Date;
+      end?: string | Date;
+      skipWeekends?: boolean;
+    } = {},
+  ): Promise<EurobondHistoryRow[]> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Resolve end
+    const endD = options.end ? parseDateArg(options.end) : today;
+
+    // Resolve start
+    let startD: Date;
+    if (options.start) {
+      startD = parseDateArg(options.start);
+    } else if (options.period) {
+      const period = options.period;
+      if (period === "ytd") {
+        startD = new Date(today.getFullYear(), 0, 1);
+      } else if (period in PERIOD_DAYS && PERIOD_DAYS[period] !== null) {
+        startD = new Date(endD);
+        startD.setDate(startD.getDate() - PERIOD_DAYS[period]!);
+      } else {
+        throw new Error(
+          `Unknown period ${JSON.stringify(period)}. Use start= or one of: ` +
+            Object.keys(PERIOD_DAYS).sort().join(", "),
+        );
+      }
+    } else {
+      // Default to 1 month
+      startD = new Date(endD);
+      startD.setDate(startD.getDate() - 30);
+    }
+
+    const provider = getZiraatProvider();
+    return provider.getHistory(
+      this.isin,
+      startD,
+      endD,
+      options.skipWeekends !== false,
+    );
   }
 }

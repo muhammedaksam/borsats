@@ -6,6 +6,7 @@
  */
 
 import { BaseProvider } from "~/providers/base";
+import { TTL } from "~/utils/helpers";
 
 const ZIRAAT_URL =
   "https://www.ziraatbank.com.tr/tr/_layouts/15/Ziraat/FaizOranlari/Ajax.aspx/GetZBBonoTahvilOran";
@@ -19,6 +20,15 @@ export interface Eurobond {
   bidYield: number | null;
   askPrice: number | null;
   askYield: number | null;
+}
+
+export interface EurobondHistoryRow {
+  date: Date;
+  bidPrice: number | null;
+  bidYield: number | null;
+  askPrice: number | null;
+  askYield: number | null;
+  daysToMaturity: number;
 }
 
 export class ZiraatEurobondProvider extends BaseProvider {
@@ -181,6 +191,104 @@ export class ZiraatEurobondProvider extends BaseProvider {
     isin = isin.toUpperCase();
     const bonds = await this.getEurobonds();
     return bonds.find((b) => b.isin === isin) || null;
+  }
+
+  /**
+   * Cached wrapper around fetchBondsForDate.
+   * Historical daily data doesn't change, so it's safe to cache aggressively.
+   */
+  private async fetchBondsForDateCached(dateStr: string): Promise<Eurobond[]> {
+    const cacheKey = `ziraat_eurobonds:${dateStr}`;
+    const cached = this.cache.get(cacheKey) as Eurobond[] | undefined;
+    if (cached) return cached;
+
+    const bonds = await this.fetchBondsForDate(dateStr);
+    this.cache.set(cacheKey, bonds, TTL.OHLCV_HISTORY);
+    return bonds;
+  }
+
+  /**
+   * Enumerate dates between start and end inclusive.
+   * Weekdays only if skipWeekends is true.
+   */
+  static iterBusinessDates(
+    start: Date,
+    end: Date,
+    skipWeekends: boolean = true,
+  ): Date[] {
+    if (end < start) return [];
+    const dates: Date[] = [];
+    const current = new Date(start);
+    while (current <= end) {
+      if (!skipWeekends || (current.getDay() !== 0 && current.getDay() !== 6)) {
+        dates.push(new Date(current));
+      }
+      current.setDate(current.getDate() + 1);
+    }
+    return dates;
+  }
+
+  /**
+   * Fetch daily bond data for a single ISIN across a date range.
+   *
+   * @param isin - ISIN code (e.g., "US900123DG28")
+   * @param start - Start date (inclusive)
+   * @param end - End date (inclusive)
+   * @param skipWeekends - Skip Saturdays/Sundays (API returns zeros)
+   * @param maxWorkers - Concurrent request batch size
+   * @returns List of EurobondHistoryRow sorted by date ascending.
+   *          Rows where bidPrice is 0 or null are dropped.
+   */
+  async getHistory(
+    isin: string,
+    start: Date,
+    end: Date,
+    skipWeekends: boolean = true,
+    maxWorkers: number = 5,
+  ): Promise<EurobondHistoryRow[]> {
+    isin = isin.toUpperCase();
+    const dates = ZiraatEurobondProvider.iterBusinessDates(
+      start,
+      end,
+      skipWeekends,
+    );
+    if (dates.length === 0) return [];
+
+    const fetchOne = async (d: Date): Promise<EurobondHistoryRow | null> => {
+      const dateStr = d.toISOString().split("T")[0];
+      const bonds = await this.fetchBondsForDateCached(dateStr);
+      for (const b of bonds) {
+        if (b.isin === isin) {
+          if (b.bidPrice === null || b.bidPrice === 0) return null;
+          return {
+            date: d,
+            bidPrice: b.bidPrice,
+            bidYield: b.bidYield,
+            askPrice: b.askPrice,
+            askYield: b.askYield,
+            daysToMaturity: b.daysToMaturity,
+          };
+        }
+      }
+      return null;
+    };
+
+    // Concurrent fetch with bounded batch size
+    const results: EurobondHistoryRow[] = [];
+    const batchSize = Math.max(1, Math.min(maxWorkers, dates.length));
+
+    for (let i = 0; i < dates.length; i += batchSize) {
+      const batch = dates.slice(i, i + batchSize);
+      const batchResults = await Promise.all(batch.map(fetchOne));
+      for (const row of batchResults) {
+        if (row !== null) {
+          results.push(row);
+        }
+      }
+    }
+
+    results.sort((a, b) => a.date.getTime() - b.date.getTime());
+    return results;
   }
 }
 

@@ -1,5 +1,5 @@
 export * from "~/ticker";
-export { Ticker, FastInfo, EnrichedInfo } from "~/ticker";
+export { Ticker, FastInfo, EnrichedInfo, computeAdjClose } from "~/ticker";
 
 export * from "~/fund";
 export { Fund } from "~/fund";
@@ -86,4 +86,5 @@ export {
   ZiraatEurobondProvider,
   getEurobondProvider,
   type Eurobond as ZiraatEurobondData,
+  type EurobondHistoryRow,
 } from "~/providers/ziraat-eurobond";

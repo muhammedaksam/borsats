@@ -38,6 +38,7 @@ module.exports = {
           resolveJsonModule: true,
           strict: true,
           skipLibCheck: true,
+          types: ["node", "jest"],
           baseUrl: ".",
           paths: {
             "~/*": ["src/*"],
