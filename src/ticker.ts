@@ -66,11 +66,7 @@ export function computeAdjClose(
   closeDates: Date[],
   dividends: DividendData[],
 ): number[] {
-  if (
-    closePrices.length === 0 ||
-    !dividends ||
-    dividends.length === 0
-  ) {
+  if (closePrices.length === 0 || !dividends || dividends.length === 0) {
     return [...closePrices];
   }
 

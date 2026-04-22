@@ -32,11 +32,7 @@ function parseDateArg(value: string | Date): Date {
   // YYYY-MM-DD
   const iso = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (iso) {
-    return new Date(
-      parseInt(iso[1]),
-      parseInt(iso[2]) - 1,
-      parseInt(iso[3]),
-    );
+    return new Date(parseInt(iso[1]), parseInt(iso[2]) - 1, parseInt(iso[3]));
   }
 
   // YYYY/MM/DD
@@ -378,9 +374,7 @@ export class Eurobond {
       } else {
         throw new Error(
           `Unknown period ${JSON.stringify(period)}. Use start= or one of: ` +
-            Object.keys(PERIOD_DAYS)
-              .sort()
-              .join(", "),
+            Object.keys(PERIOD_DAYS).sort().join(", "),
         );
       }
     } else {

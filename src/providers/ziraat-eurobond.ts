@@ -220,7 +220,7 @@ export class ZiraatEurobondProvider extends BaseProvider {
     const dates: Date[] = [];
     const current = new Date(start);
     while (current <= end) {
-      if (!skipWeekends || current.getDay() !== 0 && current.getDay() !== 6) {
+      if (!skipWeekends || (current.getDay() !== 0 && current.getDay() !== 6)) {
         dates.push(new Date(current));
       }
       current.setDate(current.getDate() + 1);

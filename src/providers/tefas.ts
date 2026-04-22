@@ -1,5 +1,4 @@
 import https from "https";
-
 import { AxiosResponse } from "axios";
 
 import { APIError, DataNotAvailableError } from "~/exceptions";
@@ -156,8 +155,7 @@ export class TEFASProvider extends BaseProvider {
   static _safeJson(response: AxiosResponse, endpoint: string): unknown {
     const status = response.status;
     const contentType = String(response.headers["content-type"] || "");
-    const body =
-      typeof response.data === "string" ? response.data : "";
+    const body = typeof response.data === "string" ? response.data : "";
 
     // Empty body check
     if (
@@ -175,7 +173,9 @@ export class TEFASProvider extends BaseProvider {
     // Non-JSON content-type check
     if (!contentType.toLowerCase().includes("json")) {
       const preview =
-        typeof body === "string" ? body.slice(0, 200) : JSON.stringify(response.data).slice(0, 200);
+        typeof body === "string"
+          ? body.slice(0, 200)
+          : JSON.stringify(response.data).slice(0, 200);
       throw new APIError(
         `TEFAS ${endpoint} returned non-JSON response ` +
           `(HTTP ${status}, content-type=${JSON.stringify(contentType)}). ` +
@@ -266,7 +266,11 @@ export class TEFASProvider extends BaseProvider {
         headers,
       )) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-      if (!result || !result.fundInfo || (result.fundInfo as unknown[]).length === 0) {
+      if (
+        !result ||
+        !result.fundInfo ||
+        (result.fundInfo as unknown[]).length === 0
+      ) {
         throw new DataNotAvailableError(`No data for fund: ${code}`);
       }
 
@@ -431,15 +435,10 @@ export class TEFASProvider extends BaseProvider {
     });
 
     try {
-      const result = (await this._postJson(
-        url,
-        body,
-        "BindHistoryAllocation",
-        {
-          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-          "X-Requested-With": "XMLHttpRequest",
-        },
-      )) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+      const result = (await this._postJson(url, body, "BindHistoryAllocation", {
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "X-Requested-With": "XMLHttpRequest",
+      })) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
       if (!result || !result.data) {
         throw new DataNotAvailableError(`No allocation data for fund: ${code}`);
       }
@@ -680,7 +679,8 @@ export class TEFASProvider extends BaseProvider {
       if (!result.data) return [];
 
       const records: FundHistoryItem[] = [];
-      for (const item of result.data as Record<string, any>[]) { // eslint-disable-line @typescript-eslint/no-explicit-any
+      for (const item of result.data as Record<string, any>[]) {
+        // eslint-disable-line @typescript-eslint/no-explicit-any
         const timestamp = Number(item.TARIH);
         if (timestamp > 0) {
           records.push({
@@ -763,7 +763,8 @@ export class TEFASProvider extends BaseProvider {
       )) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
       const allFunds = (result?.data || []) as Record<string, any>[]; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-      return allFunds.map((fund: Record<string, any>) => ({ // eslint-disable-line @typescript-eslint/no-explicit-any
+      return allFunds.map((fund: Record<string, any>) => ({
+        // eslint-disable-line @typescript-eslint/no-explicit-any
         fund_code: fund.FONKODU || "",
         name: fund.FONUNVAN || "",
         fund_category: fund.FONTURACIKLAMA || "",
