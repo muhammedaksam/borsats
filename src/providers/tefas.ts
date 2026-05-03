@@ -289,7 +289,9 @@ export class TEFASProvider extends BaseProvider {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       Accept: "application/json",
-      "User-Agent": (this.client.defaults.headers?.common?.["User-Agent"] as string) || "borsats",
+      "User-Agent":
+        (this.client.defaults.headers?.common?.["User-Agent"] as string) ||
+        "borsats",
     };
 
     let lastError: APIError | null = null;
@@ -530,21 +532,19 @@ export class TEFASProvider extends BaseProvider {
     });
 
     try {
-      const result = (await this._postJson(
-        url,
-        body,
-        "BindHistoryAllocation",
-        {
-          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-          "X-Requested-With": "XMLHttpRequest",
-        },
-      )) as Record<string, unknown>;
+      const result = (await this._postJson(url, body, "BindHistoryAllocation", {
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "X-Requested-With": "XMLHttpRequest",
+      })) as Record<string, unknown>;
       if (!result || !(result as Record<string, unknown>).data) {
         throw new DataNotAvailableError(`No allocation data for fund: ${code}`);
       }
 
       const records: AllocationItem[] = [];
-      for (const item of (result as Record<string, unknown>).data as Record<string, unknown>[]) {
+      for (const item of (result as Record<string, unknown>).data as Record<
+        string,
+        unknown
+      >[]) {
         const timestamp = Number(item.TARIH);
         if (timestamp > 0) {
           const dt = new Date(timestamp);
@@ -753,7 +753,10 @@ export class TEFASProvider extends BaseProvider {
       if (!(result as Record<string, unknown>).data) return [];
 
       const records: FundHistoryItem[] = [];
-      for (const item of (result as Record<string, unknown>).data as Record<string, unknown>[]) {
+      for (const item of (result as Record<string, unknown>).data as Record<
+        string,
+        unknown
+      >[]) {
         const timestamp = Number(item.TARIH);
         if (timestamp > 0) {
           records.push({
@@ -823,13 +826,41 @@ export class TEFASProvider extends BaseProvider {
         const r3y = fund.getiri3y as number | undefined;
         const r5y = fund.getiri5y as number | undefined;
 
-        if (minReturn1m !== undefined && (r1m === undefined || r1m < minReturn1m)) continue;
-        if (minReturn3m !== undefined && (r3m === undefined || r3m < minReturn3m)) continue;
-        if (minReturn6m !== undefined && (r6m === undefined || r6m < minReturn6m)) continue;
-        if (minReturnYtd !== undefined && (rytd === undefined || rytd < minReturnYtd)) continue;
-        if (minReturn1y !== undefined && (r1y === undefined || r1y < minReturn1y)) continue;
-        if (minReturn3y !== undefined && (r3y === undefined || r3y < minReturn3y)) continue;
-        if (minReturn5y !== undefined && (r5y === undefined || r5y < minReturn5y)) continue;
+        if (
+          minReturn1m !== undefined &&
+          (r1m === undefined || r1m < minReturn1m)
+        )
+          continue;
+        if (
+          minReturn3m !== undefined &&
+          (r3m === undefined || r3m < minReturn3m)
+        )
+          continue;
+        if (
+          minReturn6m !== undefined &&
+          (r6m === undefined || r6m < minReturn6m)
+        )
+          continue;
+        if (
+          minReturnYtd !== undefined &&
+          (rytd === undefined || rytd < minReturnYtd)
+        )
+          continue;
+        if (
+          minReturn1y !== undefined &&
+          (r1y === undefined || r1y < minReturn1y)
+        )
+          continue;
+        if (
+          minReturn3y !== undefined &&
+          (r3y === undefined || r3y < minReturn3y)
+        )
+          continue;
+        if (
+          minReturn5y !== undefined &&
+          (r5y === undefined || r5y < minReturn5y)
+        )
+          continue;
 
         filtered.push({
           fund_code: (fund.fonKodu as string) || "",
