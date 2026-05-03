@@ -57,26 +57,26 @@ describe("TEFASProvider (Mocked) — Coverage Boost", () => {
           status: 200,
           headers: { "content-type": "application/json" },
           data: {
-            data: [
+            resultList: [
               {
-                FONKODU: "ABC",
-                FONUNVAN: "ABC Fonu",
-                FONTURACIKLAMA: "Hisse",
-                KURUCUKODU: "XYZ",
-                UYGULANANYU1Y: "1,50",
-                FONICTUZUKYU1G: "2,00",
-                FONTOPGIDERKESORAN: "3,50",
-                YILLIKGETIRI: 15.5,
+                fonKodu: "ABC",
+                fonUnvan: "ABC Fonu",
+                fonTurAciklama: "Hisse",
+                kurucuKod: "XYZ",
+                uygulananYu1Y: "1,50",
+                fonIcTuzukYu1G: "2,00",
+                fonTopGiderKesoran: "3,50",
+                yillikGetiri: 15.5,
               },
               {
-                FONKODU: "DEF",
-                FONUNVAN: "DEF Fonu",
-                FONTURACIKLAMA: "Borç",
-                KURUCUKODU: "QRS",
-                UYGULANANYU1Y: null,
-                FONICTUZUKYU1G: null,
-                FONTOPGIDERKESORAN: null,
-                YILLIKGETIRI: null,
+                fonKodu: "DEF",
+                fonUnvan: "DEF Fonu",
+                fonTurAciklama: "Borç",
+                kurucuKod: "QRS",
+                uygulananYu1Y: null,
+                fonIcTuzukYu1G: null,
+                fonTopGiderKesoran: null,
+                yillikGetiri: null,
               },
             ],
           },
@@ -107,7 +107,7 @@ describe("TEFASProvider (Mocked) — Coverage Boost", () => {
         post: jest.fn().mockResolvedValue({
           status: 200,
           headers: { "content-type": "application/json" },
-          data: { data: [] },
+          data: { resultList: [] },
         }),
         get: jest.fn(),
         defaults: { headers: { common: {} } },
@@ -119,7 +119,7 @@ describe("TEFASProvider (Mocked) — Coverage Boost", () => {
       expect(fees).toEqual([]);
     });
 
-    test("handles missing data field", async () => {
+    test("handles missing resultList field", async () => {
       jest.spyOn(axios, "create").mockReturnValue({
         post: jest.fn().mockResolvedValue({
           status: 200,
