@@ -9,12 +9,12 @@ import { sleep, TTL } from "~/utils/helpers";
 export interface FundDetail {
   fund_code: string;
   name: string;
-  date: string;
+  date?: string;
   price: number;
   fund_size: number;
   investor_count: number;
-  founder: string;
-  manager: string;
+  founder?: string;
+  manager?: string;
   fund_type: string;
   category: string;
   risk_value: number;
@@ -28,6 +28,10 @@ export interface FundDetail {
   return_5y?: number;
   daily_return?: number;
   weekly_return?: number;
+  // Category ranking
+  category_rank?: number;
+  category_fund_count?: number;
+  market_share?: number;
   // Profile
   isin?: string;
   last_trading_time?: string;
@@ -57,8 +61,34 @@ export interface AllocationItem {
   weight: number;
 }
 
+export interface ScreenFundsOptions {
+  fundType?: FundType;
+  founder?: string;
+  minReturn1m?: number;
+  minReturn3m?: number;
+  minReturn6m?: number;
+  minReturnYtd?: number;
+  minReturn1y?: number;
+  minReturn3y?: number;
+  minReturn5y?: number;
+}
+
+export interface ScreenFundResult {
+  fund_code: string;
+  name: string;
+  fund_type: string;
+  return_1m?: number;
+  return_3m?: number;
+  return_6m?: number;
+  return_ytd?: number;
+  return_1y?: number;
+  return_3y?: number;
+  return_5y?: number;
+}
+
 export class TEFASProvider extends BaseProvider {
-  private static readonly BASE_URL = "https://www.tefas.gov.tr/api/DB";
+  private static readonly BASE_URL_V2 = "https://www.tefas.gov.tr/api/funds";
+  private static readonly BASE_URL_LEGACY = "https://www.tefas.gov.tr/api/DB";
   private static readonly MAX_CHUNK_DAYS = 90;
 
   // Asset type mappings
@@ -202,7 +232,10 @@ export class TEFASProvider extends BaseProvider {
   }
 
   /**
-   * POST to TEFAS and parse JSON, retrying transient WAF blocks.
+   * POST to TEFAS (form-urlencoded) and parse JSON, retrying transient WAF blocks.
+   *
+   * Used for legacy `/api/DB` endpoints which expect
+   * `application/x-www-form-urlencoded` payloads.
    *
    * TEFAS WAF intermittently returns empty bodies or HTML maintenance
    * pages with HTTP 200. Retries with exponential backoff (0.5s, 1s, 2s)
@@ -237,6 +270,72 @@ export class TEFASProvider extends BaseProvider {
   }
 
   /**
+   * POST to the new TEFAS `/api/funds/*` endpoints with a JSON body.
+   *
+   * The redesigned (2025+) TEFAS API uses `Content-Type: application/json`
+   * and returns a standard envelope:
+   *   {errorCode: ..., errorMessage: ..., resultList: [...]}
+   *
+   * This method handles that envelope, retries transient failures, and
+   * returns the `resultList` directly.
+   */
+  async _postJsonV2(
+    endpointPath: string,
+    payload: Record<string, unknown>,
+    endpointLabel: string,
+    maxRetries: number = 3,
+  ): Promise<Record<string, unknown>[]> {
+    const url = `${TEFASProvider.BASE_URL_V2}/${endpointPath}`;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "User-Agent":
+        (this.client.defaults.headers?.common?.["User-Agent"] as string) ||
+        "borsats",
+    };
+
+    let lastError: APIError | null = null;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      if (attempt > 0) {
+        await sleep(500 * Math.pow(2, attempt - 1));
+      }
+
+      const response = await this.client.post(url, payload, { headers });
+      let data: unknown;
+      try {
+        data = TEFASProvider._safeJson(response, endpointLabel);
+      } catch (e) {
+        if (e instanceof APIError) {
+          lastError = e;
+          continue;
+        }
+        throw e;
+      }
+
+      // Unwrap the v2 envelope
+      if (typeof data === "object" && data !== null && !Array.isArray(data)) {
+        const obj = data as Record<string, unknown>;
+        const errMsg = obj.errorMessage as string | undefined;
+        if (errMsg) {
+          throw new APIError(
+            `TEFAS ${endpointLabel} returned error: ${errMsg}`,
+          );
+        }
+        const resultList = obj.resultList;
+        if (resultList === undefined || resultList === null) {
+          return [];
+        }
+        return resultList as Record<string, unknown>[];
+      }
+
+      // Unexpected shape — return as-is wrapped in a list
+      return data ? [data as Record<string, unknown>] : [];
+    }
+
+    throw lastError!;
+  }
+
+  /**
    * Get detailed information about a fund.
    */
   async getFundDetail(
@@ -250,97 +349,95 @@ export class TEFASProvider extends BaseProvider {
     const cached = this.cache.get(cacheKey);
     if (cached) return cached as FundDetail;
 
-    const url = `${TEFASProvider.BASE_URL}/GetAllFundAnalyzeData`;
-    const data = `dil=TR&fonkod=${code}`;
-
-    const headers = {
-      "Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
-      Accept: "application/json, text/plain, */*",
-    };
-
     try {
-      const result = (await this._postJson(
-        url,
-        data,
-        "GetAllFundAnalyzeData",
-        headers,
-      )) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+      // --- 1. Core fund info from fonBilgiGetir ---
+      const infoList = await this._postJsonV2(
+        "fonBilgiGetir",
+        { fonKodu: code },
+        "fonBilgiGetir",
+      );
 
-      if (
-        !result ||
-        !result.fundInfo ||
-        (result.fundInfo as unknown[]).length === 0
-      ) {
+      if (!infoList || infoList.length === 0) {
         throw new DataNotAvailableError(`No data for fund: ${code}`);
       }
 
-      const info = result.fundInfo[0];
-      if (!info.FONUNVAN) {
-        throw new DataNotAvailableError(`Fund not found: ${code}`);
-      }
-      const returns = (result.fundReturn && result.fundReturn[0]) || {};
-      const profile = (result.fundProfile && result.fundProfile[0]) || {};
-      const rawAllocation = result.fundAllocation || [];
+      const fundInfo = infoList[0];
 
-      // Parse allocation
-      const allocation: Array<{
-        asset_type: string;
-        asset_name: string;
-        weight: number;
-      }> = [];
-
-      for (const item of rawAllocation) {
-        const weight = parseFloat(item.PORTFOYORANI || "0");
-        if (weight > 0) {
-          const typeTr = item.KIYMETTIP || "";
-          const stdName =
-            TEFASProvider.ASSET_NAME_STANDARDIZATION[typeTr] || typeTr;
-          allocation.push({
-            asset_type: typeTr,
-            asset_name: stdName,
-            weight,
-          });
+      // --- 2. Return data from fonGetiriBazliBilgiGetir ---
+      let fundReturn: Record<string, unknown> = {};
+      try {
+        const returnsCacheKey = `tefas:all_returns:${type}`;
+        let allReturns = this.cache.get(returnsCacheKey);
+        if (allReturns === null || allReturns === undefined) {
+          allReturns = await this._postJsonV2(
+            "fonGetiriBazliBilgiGetir",
+            {
+              fonKodu: code,
+              fonTipi: type,
+              dil: "TR",
+              calismaTipi: 2,
+              donemGetiri1a: "1",
+              donemGetiri3a: "1",
+              donemGetiri6a: "1",
+              donemGetiriyb: "1",
+              donemGetiri1y: "1",
+              donemGetiri3y: "1",
+              donemGetiri5y: "1",
+            },
+            "fonGetiriBazliBilgiGetir",
+          );
+          this.cache.set(returnsCacheKey, allReturns, TTL.FX_RATES);
         }
+
+        for (const entry of allReturns as Record<string, unknown>[]) {
+          if ((entry.fonKodu as string) === code) {
+            fundReturn = entry;
+            break;
+          }
+        }
+      } catch {
+        // Returns data is supplementary; don't fail the whole call
       }
-      allocation.sort((a, b) => b.weight - a.weight);
 
       const detail: FundDetail = {
         fund_code: code,
-        name: info.FONUNVAN,
-        date: info.TARIH,
-        price: Number(info.SONFIYAT || 0),
-        fund_size: Number(info.PORTBUYUKLUK || 0),
-        investor_count: Number(info.YATIRIMCISAYI || 0),
-        founder: info.KURUCU,
-        manager: info.YONETICI,
-        fund_type: info.FONTUR || info.FONTURACIKLAMA || info.FONKATEGORI,
-        category: info.FONKATEGORI,
-        risk_value: Number(info.RISKDEGERI || 0),
-        // Returns
-        return_1m: info.GETIRI1A, // info often has these too, or fundReturn
-        return_3m: returns.GETIRI3A,
-        return_6m: returns.GETIRI6A,
-        return_ytd: returns.GETIRIYB,
-        return_1y: returns.GETIRI1Y,
-        return_3y: returns.GETIRI3Y,
-        return_5y: returns.GETIRI5Y,
-        daily_return: info.GUNLUKGETIRI,
-        weekly_return: info.HAFTALIKGETIRI,
-        // Profile
-        isin: profile.ISINKOD,
-        last_trading_time: profile.SONISSAAT,
-        min_purchase: profile.MINALIS,
-        min_redemption: profile.MINSATIS,
-        entry_fee: profile.GIRISKOMISYONU,
-        exit_fee: profile.CIKISKOMISYONU,
-        kap_link: profile.KAPLINK,
-        allocation,
+        name: (fundInfo.fonUnvan as string) || "",
+        date: undefined,
+        price: Number(fundInfo.sonFiyat || 0),
+        fund_size: Number(fundInfo.portBuyukluk || 0),
+        investor_count: Number(fundInfo.yatirimciSayi || 0),
+        founder: undefined,
+        manager: undefined,
+        fund_type: (fundReturn.fonTurAciklama as string) || "",
+        category: (fundInfo.fonKategori as string) || "",
+        risk_value: Number(fundReturn.riskDegeri || 0),
+        return_1m: fundReturn.getiri1a as number | undefined,
+        return_3m: fundReturn.getiri3a as number | undefined,
+        return_6m: fundReturn.getiri6a as number | undefined,
+        return_ytd: fundReturn.getiriyb as number | undefined,
+        return_1y: fundReturn.getiri1y as number | undefined,
+        return_3y: fundReturn.getiri3y as number | undefined,
+        return_5y: fundReturn.getiri5y as number | undefined,
+        daily_return: fundInfo.gunlukGetiri as number | undefined,
+        weekly_return: undefined,
+        category_rank: fundInfo.kategoriDerece as number | undefined,
+        category_fund_count: fundInfo.kategoriFonSay as number | undefined,
+        market_share: fundInfo.pazarPayi as number | undefined,
+        isin: undefined,
+        last_trading_time: undefined,
+        min_purchase: undefined,
+        min_redemption: undefined,
+        entry_fee: undefined,
+        exit_fee: undefined,
+        kap_link: undefined,
+        allocation: undefined,
       };
 
       this.cache.set(cacheKey, detail, TTL.FX_RATES);
       return detail;
     } catch (e) {
       if (e instanceof DataNotAvailableError) throw e;
+      if (e instanceof APIError) throw e;
       throw new APIError(
         `Failed to fetch fund detail for ${code}: ${(e as Error).message}`,
       );
@@ -420,7 +517,7 @@ export class TEFASProvider extends BaseProvider {
     const cached = this.cache.get(cacheKey);
     if (cached) return cached as AllocationItem[];
 
-    const url = `${TEFASProvider.BASE_URL}/BindHistoryAllocation`;
+    const url = `${TEFASProvider.BASE_URL_LEGACY}/BindHistoryAllocation`;
 
     const body = new URLSearchParams({
       fontip: type,
@@ -438,16 +535,19 @@ export class TEFASProvider extends BaseProvider {
       const result = (await this._postJson(url, body, "BindHistoryAllocation", {
         "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
         "X-Requested-With": "XMLHttpRequest",
-      })) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
-      if (!result || !result.data) {
+      })) as Record<string, unknown>;
+      if (!result || !(result as Record<string, unknown>).data) {
         throw new DataNotAvailableError(`No allocation data for fund: ${code}`);
       }
 
       const records: AllocationItem[] = [];
-      for (const item of result.data) {
+      for (const item of (result as Record<string, unknown>).data as Record<
+        string,
+        unknown
+      >[]) {
         const timestamp = Number(item.TARIH);
         if (timestamp > 0) {
-          const dt = new Date(timestamp); // TEFAS returns millis
+          const dt = new Date(timestamp);
 
           for (const [key, value] of Object.entries(item)) {
             if (["TARIH", "FONKODU", "FONUNVAN", "BilFiyat"].includes(key))
@@ -510,7 +610,6 @@ export class TEFASProvider extends BaseProvider {
       startDt = new Date(endDt.getTime() - days * 24 * 60 * 60 * 1000);
     }
 
-    // TEFAS supports max ~100 days
     const maxDays = 100;
     const diffDays = Math.floor(
       (endDt.getTime() - startDt.getTime()) / (24 * 60 * 60 * 1000),
@@ -536,51 +635,28 @@ export class TEFASProvider extends BaseProvider {
       return_1y?: number;
     }>
   > {
-    const url = `${TEFASProvider.BASE_URL}/BindComparisonFundReturns`;
-
-    // Using comparison endpoint to search (gets all funds)
-    const body = new URLSearchParams({
-      calismatipi: "2",
-      fontip: "YAT",
-      sfontur: "Tümü",
-      kurucukod: "",
-      fongrup: "",
-      bastarih: "Başlangıç",
-      bittarih: "Bitiş",
-      fonturkod: "",
-      fonunvantip: "",
-      strperiod: "1,1,1,1,1,1,1",
-      islemdurum: "1",
-    });
-
     try {
-      const result = (await this._postJson(
-        url,
-        body,
-        "BindComparisonFundReturns",
-        {
-          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-          "X-Requested-With": "XMLHttpRequest",
-        },
-      )) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
-      const allFunds = result.data || [];
-      const queryLower = query.toLocaleLowerCase("tr-TR");
+      const results = await this._postJsonV2(
+        "fonUnvanAra",
+        { aranan: query },
+        "fonUnvanAra",
+      );
 
-      const matching = [];
-      for (const fund of allFunds) {
+      const matching: Array<{
+        fund_code: string;
+        name: string;
+        fund_type: string;
+        return_1y?: number;
+      }> = [];
+      for (const fund of results) {
+        matching.push({
+          fund_code: (fund.fonKodu as string) || "",
+          name: (fund.fonUnvan as string) || "",
+          fund_type: "",
+          return_1y: undefined,
+        });
+
         if (matching.length >= limit) break;
-
-        const code = (fund.FONKODU || "").toLocaleLowerCase("tr-TR");
-        const name = (fund.FONUNVAN || "").toLocaleLowerCase("tr-TR");
-
-        if (code.includes(queryLower) || name.includes(queryLower)) {
-          matching.push({
-            fund_code: fund.FONKODU,
-            name: fund.FONUNVAN,
-            fund_type: fund.FONTURACIKLAMA,
-            return_1y: fund.GETIRI1Y,
-          });
-        }
       }
       return matching;
     } catch (err) {
@@ -609,7 +685,7 @@ export class TEFASProvider extends BaseProvider {
       );
       try {
         if (allRecords.length > 0) {
-          await new Promise((r) => setTimeout(r, 300)); // Rate limit buffer
+          await new Promise((r) => setTimeout(r, 300));
         }
 
         const chunk = await this._fetchHistoryChunk(
@@ -621,19 +697,17 @@ export class TEFASProvider extends BaseProvider {
         allRecords.push(...chunk);
       } catch (err) {
         if (err instanceof APIError && (err as Error).message.includes("WAF")) {
-          break; // Stop fetching older data if WAF blocked
+          break;
         }
-        // Continue if chunk fails (might be empty/DataNotAvailable)
       }
 
-      chunkStart = new Date(chunkEnd.getTime() + 24 * 60 * 60 * 1000); // +1 day
+      chunkStart = new Date(chunkEnd.getTime() + 24 * 60 * 60 * 1000);
     }
 
     if (allRecords.length === 0) {
       throw new DataNotAvailableError(`No history for fund: ${code}`);
     }
 
-    // Deduplicate and sort
     const unique = new Map<number, FundHistoryItem>();
     allRecords.forEach((r) => unique.set(r.date.getTime(), r));
 
@@ -648,7 +722,7 @@ export class TEFASProvider extends BaseProvider {
     end: Date,
     type: FundType = "YAT",
   ): Promise<FundHistoryItem[]> {
-    const url = `${TEFASProvider.BASE_URL}/BindHistoryInfo`;
+    const url = `${TEFASProvider.BASE_URL_LEGACY}/BindHistoryInfo`;
 
     const body = new URLSearchParams({
       fontip: type,
@@ -674,13 +748,15 @@ export class TEFASProvider extends BaseProvider {
         body,
         "BindHistoryInfo",
         headers,
-      )) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+      )) as Record<string, unknown>;
 
-      if (!result.data) return [];
+      if (!(result as Record<string, unknown>).data) return [];
 
       const records: FundHistoryItem[] = [];
-      for (const item of result.data as Record<string, any>[]) {
-        // eslint-disable-line @typescript-eslint/no-explicit-any
+      for (const item of (result as Record<string, unknown>).data as Record<
+        string,
+        unknown
+      >[]) {
         const timestamp = Number(item.TARIH);
         if (timestamp > 0) {
           records.push({
@@ -702,8 +778,108 @@ export class TEFASProvider extends BaseProvider {
     return date.toISOString().split("T")[0];
   }
 
-  async screenFunds(_options: unknown): Promise<unknown[]> {
-    return [];
+  /**
+   * Screen/filter funds by return thresholds and other criteria.
+   */
+  async screenFunds(
+    options: ScreenFundsOptions = {},
+  ): Promise<ScreenFundResult[]> {
+    const {
+      fundType = "YAT",
+      founder,
+      minReturn1m,
+      minReturn3m,
+      minReturn6m,
+      minReturnYtd,
+      minReturn1y,
+      minReturn3y,
+      minReturn5y,
+    } = options;
+
+    try {
+      const allFunds = await this._postJsonV2(
+        "fonGetiriBazliBilgiGetir",
+        {
+          fonTipi: fundType,
+          dil: "TR",
+          calismaTipi: 2,
+          donemGetiri1a: "1",
+          donemGetiri3a: "1",
+          donemGetiri6a: "1",
+          donemGetiriyb: "1",
+          donemGetiri1y: "1",
+          donemGetiri3y: "1",
+          donemGetiri5y: "1",
+        },
+        "fonGetiriBazliBilgiGetir",
+      );
+
+      const filtered: ScreenFundResult[] = [];
+      for (const fund of allFunds) {
+        if (founder && (fund.kurucuKod as string) !== founder) continue;
+
+        const r1m = fund.getiri1a as number | undefined;
+        const r3m = fund.getiri3a as number | undefined;
+        const r6m = fund.getiri6a as number | undefined;
+        const rytd = fund.getiriyb as number | undefined;
+        const r1y = fund.getiri1y as number | undefined;
+        const r3y = fund.getiri3y as number | undefined;
+        const r5y = fund.getiri5y as number | undefined;
+
+        if (
+          minReturn1m !== undefined &&
+          (r1m === undefined || r1m < minReturn1m)
+        )
+          continue;
+        if (
+          minReturn3m !== undefined &&
+          (r3m === undefined || r3m < minReturn3m)
+        )
+          continue;
+        if (
+          minReturn6m !== undefined &&
+          (r6m === undefined || r6m < minReturn6m)
+        )
+          continue;
+        if (
+          minReturnYtd !== undefined &&
+          (rytd === undefined || rytd < minReturnYtd)
+        )
+          continue;
+        if (
+          minReturn1y !== undefined &&
+          (r1y === undefined || r1y < minReturn1y)
+        )
+          continue;
+        if (
+          minReturn3y !== undefined &&
+          (r3y === undefined || r3y < minReturn3y)
+        )
+          continue;
+        if (
+          minReturn5y !== undefined &&
+          (r5y === undefined || r5y < minReturn5y)
+        )
+          continue;
+
+        filtered.push({
+          fund_code: (fund.fonKodu as string) || "",
+          name: (fund.fonUnvan as string) || "",
+          fund_type: (fund.fonTurAciklama as string) || "",
+          return_1m: r1m,
+          return_3m: r3m,
+          return_6m: r6m,
+          return_ytd: rytd,
+          return_1y: r1y,
+          return_3y: r3y,
+          return_5y: r5y,
+        });
+      }
+
+      return filtered;
+    } catch (err) {
+      throw new APIError(`Screen funds failed: ${(err as Error).message}`);
+    }
   }
 
   /**
@@ -739,50 +915,49 @@ export class TEFASProvider extends BaseProvider {
       annual_return: number | null;
     }>
   > {
-    const url = `${TEFASProvider.BASE_URL}/BindComparisonManagementFees`;
-
-    const body = new URLSearchParams({
-      fontip: fundType,
-      sfontur: "",
-      kurucukod: founder || "",
-      fongrup: "",
-      fonturkod: "",
-      fonunvantip: "",
-      islemdurum: "1",
-    });
-
     try {
-      const result = (await this._postJson(
-        url,
-        body,
-        "BindComparisonManagementFees",
-        {
-          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-          "X-Requested-With": "XMLHttpRequest",
-        },
-      )) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
-      const allFunds = (result?.data || []) as Record<string, any>[]; // eslint-disable-line @typescript-eslint/no-explicit-any
+      const allFunds = await this._postJsonV2(
+        "fonYonetimBazliBilgiGetir",
+        { fonTipi: fundType, dil: "TR" },
+        "fonYonetimBazliBilgiGetir",
+      );
 
-      return allFunds.map((fund: Record<string, any>) => ({
-        // eslint-disable-line @typescript-eslint/no-explicit-any
-        fund_code: fund.FONKODU || "",
-        name: fund.FONUNVAN || "",
-        fund_category: fund.FONTURACIKLAMA || "",
-        founder_code: fund.KURUCUKODU || "",
-        applied_fee: TEFASProvider.parseTurkishDecimal(
-          fund.UYGULANANYU1Y as string,
-        ),
-        prospectus_fee: TEFASProvider.parseTurkishDecimal(
-          fund.FONICTUZUKYU1G as string,
-        ),
-        max_expense_ratio: TEFASProvider.parseTurkishDecimal(
-          fund.FONTOPGIDERKESORAN as string,
-        ),
-        annual_return:
-          fund.YILLIKGETIRI !== null && fund.YILLIKGETIRI !== undefined
-            ? Number(fund.YILLIKGETIRI)
-            : null,
-      }));
+      const funds: Array<{
+        fund_code: string;
+        name: string;
+        fund_category: string;
+        founder_code: string;
+        applied_fee: number | null;
+        prospectus_fee: number | null;
+        max_expense_ratio: number | null;
+        annual_return: number | null;
+      }> = [];
+
+      for (const fund of allFunds) {
+        if (founder && (fund.kurucuKod as string) !== founder) continue;
+
+        funds.push({
+          fund_code: (fund.fonKodu as string) || "",
+          name: (fund.fonUnvan as string) || "",
+          fund_category: (fund.fonTurAciklama as string) || "",
+          founder_code: (fund.kurucuKod as string) || "",
+          applied_fee: TEFASProvider.parseTurkishDecimal(
+            fund.uygulananYu1Y as string,
+          ),
+          prospectus_fee: TEFASProvider.parseTurkishDecimal(
+            fund.fonIcTuzukYu1G as string,
+          ),
+          max_expense_ratio: TEFASProvider.parseTurkishDecimal(
+            fund.fonTopGiderKesoran as string,
+          ),
+          annual_return:
+            fund.yillikGetiri !== null && fund.yillikGetiri !== undefined
+              ? Number(fund.yillikGetiri)
+              : null,
+        });
+      }
+
+      return funds;
     } catch (err) {
       throw new APIError(
         `Failed to fetch management fees: ${(err as Error).message}`,
