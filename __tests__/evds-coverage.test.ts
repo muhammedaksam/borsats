@@ -74,6 +74,11 @@ describe("EVDS Comprehensive Coverage", () => {
       expect(res).toHaveLength(1);
     });
 
+    it("should cover EVDSSeries code getter", () => {
+      const series = new EVDSSeries("TP.TEST");
+      expect(series.code).toBe("TP.TEST");
+    });
+
     it("should cover EVDSSeries error cases", async () => {
       // @ts-ignore
       expect(() => new EVDSSeries(null)).toThrow();
@@ -88,6 +93,10 @@ describe("EVDS Comprehensive Coverage", () => {
       await expect(provider.getDashboardByEncodedId("")).rejects.toThrow();
       await expect(provider.searchServer("")).rejects.toThrow();
       await expect(provider.getSeriesRange([])).rejects.toThrow();
+      // getSettings error
+      await expect(provider.getSettings()).rejects.toThrow(/at least one settings key/);
+      // getDashboard error
+      await expect(provider.getDashboard("")).rejects.toThrow(/dashboard slug is required/);
     });
 
     it("should cover getAnnouncements branches", async () => {
@@ -134,13 +143,106 @@ describe("EVDS Comprehensive Coverage", () => {
       expect(mockedAxios.get).toHaveBeenCalled();
     });
     
-    it("should cover getHomePageDashboards and getDashboardByEncodedId", async () => {
+    it("should cover getHomePageDashboards, getDashboardByEncodedId and getDashboard", async () => {
       const provider = getEVDSProvider();
       mockedAxios.request.mockResolvedValue({ data: [{ id: 1 }] });
       expect(await provider.getHomePageDashboards()).toHaveLength(1);
       
       mockedAxios.request.mockResolvedValue({ data: { id: 1 } });
       expect(await provider.getDashboardByEncodedId("abc")).toBeDefined();
+      expect(await provider.getDashboard("slug")).toBeDefined();
+    });
+
+    it("should cover singleton and helper errors", async () => {
+      const provider = getEVDSProvider();
+      
+      // setEVDSKey error
+      // @ts-ignore
+      expect(() => setEVDSKey(null)).toThrow(/non-empty string/);
+      
+      // resolveFrequency error
+      expect(() => provider.resolveFrequency("unknown")).toThrow(/Invalid frequency/);
+      
+      // resolveFormula error
+      expect(() => provider.resolveFormula("unknown")).toThrow(/Invalid formula/);
+
+      // periodToDates YTD
+      // @ts-ignore - It is exported as a function, not a method
+      const { periodToDates } = require("~/providers/evds");
+      expect(periodToDates("ytd")).toBeDefined();
+    });
+
+    it("should cover environment API key reading", () => {
+      const oldKey = process.env.EVDS_API_KEY;
+      process.env.EVDS_API_KEY = "env-key";
+      clearEVDSKey(); // Clears instance and globalApiKey, forcing re-read from env
+      const provider = getEVDSProvider();
+      expect(provider.hasApiKey).toBe(true);
+      if (oldKey) process.env.EVDS_API_KEY = oldKey;
+      else delete process.env.EVDS_API_KEY;
+      clearEVDSKey();
+    });
+
+    it("should cover invalid date format error", async () => {
+      setEVDSKey("key");
+      const provider = getEVDSProvider();
+      await expect(provider.getSeriesData(["S1"], "INVALID", "DATE")).rejects.toThrow(/Could not parse date/);
+      // @ts-ignore
+      await expect(provider.getSeriesData(["S1"], 123, 456)).rejects.toThrow(/Unsupported date value/);
+    });
+
+    it("should cover getSettings single object payload", async () => {
+      const provider = getEVDSProvider();
+      mockedAxios.request.mockResolvedValue({ data: { key: "K1", value: "V1" } });
+      const settings = await provider.getSettings("K1");
+      expect(settings.K1).toBe("V1");
+    });
+
+    it("should cover REST catalogue and error branches", async () => {
+      const provider = getEVDSProvider();
+      
+      // Force hasApiKey to be false for error testing
+      const hasKeySpy = jest.spyOn(provider, 'hasApiKey', 'get').mockReturnValue(false);
+      
+      await expect(provider.getCategoriesRest()).rejects.toThrow(/requires an API key/);
+      await expect(provider.getDatagroupsRest()).rejects.toThrow(/requires an API key/);
+      await expect(provider.getSeriesListRest("S1")).rejects.toThrow(/requires an API key/);
+
+      // Restore and set key
+      hasKeySpy.mockReturnValue(true);
+      setEVDSKey("key");
+      
+      mockedAxios.request.mockResolvedValue({ data: [] });
+      expect(await provider.getCategoriesRest()).toHaveLength(0);
+      expect(await provider.getDatagroupsRest()).toHaveLength(0);
+      expect(await provider.getDatagroupsRest("DG1")).toHaveLength(0);
+      expect(await provider.getSeriesListRest("S1")).toHaveLength(0);
+
+      mockedAxios.request.mockResolvedValueOnce({ data: {} });
+      await expect(provider.getCategories()).rejects.toThrow(/Unexpected EVDS categories/);
+
+      mockedAxios.request.mockResolvedValueOnce({ data: {} });
+      await expect(provider.getSeriesList("DG1")).rejects.toThrow(/Unexpected serieList/);
+      
+      hasKeySpy.mockRestore();
+    });
+
+    it("should cover single series 'Value' mapping in frameFromPayload", async () => {
+      setEVDSKey("key");
+      const provider = getEVDSProvider();
+      jest.spyOn(provider, 'findSeries').mockResolvedValue({
+        SERIE_CODE: "TP.SINGLE",
+        START_DATE: "01-01-2020",
+        FREQUENCY: 1
+      });
+      const series = new EVDSSeries("TP.SINGLE");
+      mockedAxios.get.mockResolvedValue({ 
+        data: { 
+          items: [{ TARIH: "01-01-2024", TP_SINGLE: 123 }] 
+        } 
+      });
+      const res = await series.history();
+      expect(res[0].Value).toBe(123);
     });
   });
 });
