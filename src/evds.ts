@@ -43,9 +43,10 @@ function parseEVDSDate(value: string | undefined | null): Date | null {
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
     return new Date(s);
   }
-  // YYYY-MM
-  if (/^\d{4}-\d{2}$/.test(s)) {
-    return new Date(`${s}-01`);
+  // YYYY-MM or YYYY-M
+  if (/^\d{4}-\d{1,2}$/.test(s)) {
+    const [y, m] = s.split("-");
+    return new Date(parseInt(y), parseInt(m) - 1, 1);
   }
   // YYYY
   if (/^\d{4}$/.test(s)) {
@@ -66,7 +67,9 @@ function parseEVDSDate(value: string | undefined | null): Date | null {
 
 function frameFromPayload(payload: any, seriesCodes: string[]): any[] {
   let rows: any[] = [];
-  if (payload && typeof payload === "object") {
+  if (Array.isArray(payload)) {
+    rows = payload;
+  } else if (payload && typeof payload === "object") {
     const p = payload as any;
     for (const key of ["items", "data", "observations", "result"]) {
       if (Array.isArray(p[key])) {
@@ -74,8 +77,6 @@ function frameFromPayload(payload: any, seriesCodes: string[]): any[] {
         break;
       }
     }
-  } else if (Array.isArray(payload)) {
-    rows = payload as any[];
   }
   if (!rows || rows.length === 0) return [];
 
@@ -504,7 +505,9 @@ export class EVDS {
     );
 
     let rows: any[] = [];
-    if (payload && typeof payload === "object") {
+    if (Array.isArray(payload)) {
+      rows = payload;
+    } else if (payload && typeof payload === "object") {
       const p = payload as any;
       for (const key of ["items", "data", "observations", "result"]) {
         if (Array.isArray(p[key])) {
@@ -512,8 +515,6 @@ export class EVDS {
           break;
         }
       }
-    } else if (Array.isArray(payload)) {
-      rows = payload as any[];
     }
 
     let seriesCols: string[] = [];
@@ -534,6 +535,18 @@ export class EVDS {
 // --- Module-level shortcuts ---
 export function evdsCategories(): Promise<any[]> {
   return new EVDS().categories();
+}
+
+export function evdsDatagroups(): Promise<any[]> {
+  return new EVDS().datagroups();
+}
+
+export function evdsDashboard(): Promise<any> {
+  return new EVDS().dashboard();
+}
+
+export function evdsAnnouncements(): Promise<any[]> {
+  return new EVDS().announcements();
 }
 
 export function evdsSearch(

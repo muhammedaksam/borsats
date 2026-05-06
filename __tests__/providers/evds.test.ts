@@ -137,11 +137,15 @@ describe("EVDSProvider", () => {
       expect(provider.resolveFrequency("monthly")).toBe(5);
       expect(provider.resolveFrequency("daily")).toBe(1);
       expect(provider.resolveFrequency(1)).toBe(1);
+      expect(provider.resolveFrequency(" 5 ")).toBe(5);
+      expect(() => provider.resolveFrequency("invalid")).toThrow(/Invalid frequency/);
     });
 
     it("should resolve formula correctly", () => {
       expect(provider.resolveFormula("level")[0]).toBe("0");
       expect(provider.resolveFormula("pct_change")[0]).toBe("1");
+      expect(provider.resolveFormula(1)[0]).toBe("1");
+      expect(provider.resolveFormula("2")[0]).toBe("2");
       expect(() => provider.resolveFormula("invalid")).toThrow(/Invalid formula/);
     });
 
@@ -200,6 +204,106 @@ describe("EVDSProvider", () => {
       const serie = await provider.findSeries("TP.TEST");
       expect(serie).toBeDefined();
       expect(serie?.SERIE_CODE).toBe("TP_TEST");
+    });
+
+    it("should handle getSeriesData validation errors", async () => {
+      setEVDSKey("key");
+      const testProvider = getEVDSProvider();
+      await expect(testProvider.getSeriesData([], "01-01-2024", "01-01-2024")).rejects.toThrow(/at least one series code/);
+      await expect(testProvider.getSeriesData(Array(401).fill("A"), "01-01-2024", "01-01-2024")).rejects.toThrow(/max 400 series/);
+      await expect(testProvider.getSeriesData(["A", "B"], "01-01-2024", "01-01-2024", "monthly", ["avg"])).rejects.toThrow(/aggregation list length/);
+      await expect(testProvider.getSeriesData(["A"], "01-01-2024", "01-01-2024", "monthly", "invalid")).rejects.toThrow(/Invalid aggregation/);
+      await expect(testProvider.getSeriesData(["A", "B"], "01-01-2024", "01-01-2024", "monthly", "avg", ["level"])).rejects.toThrow(/formula list length/);
+    });
+
+    it("should handle getSeriesData non-json output", async () => {
+      setEVDSKey("key");
+      const testProvider = getEVDSProvider();
+      mockedAxios.get.mockResolvedValueOnce({ data: "CSV DATA" });
+      const res = await testProvider.getSeriesData(["TP.TEST"], "01-01-2024", "01-01-2024", "monthly", "avg", "level", 2, 0, "csv");
+      expect(res).toBe("CSV DATA");
+    });
+
+    it("should handle generic REST errors in restDataGet", async () => {
+      setEVDSKey("key");
+      const testProvider = getEVDSProvider();
+      mockedAxios.get.mockRejectedValueOnce({ message: "Network Error" });
+      await expect(testProvider.getSeriesData(["TP.TEST"], "01-01-2024", "01-01-2024")).rejects.toThrow(/EVDS REST request failed/);
+    });
+
+    it("should handle malformed entries in getSeriesRange", async () => {
+      setEVDSKey("key");
+      mockedAxios.post.mockResolvedValueOnce({ 
+        data: { 
+          items: [null, {}, { SERIE_CODE: "TP_TEST", BASLANGIC_TARIHI: "01-01-2020", BITIS_TARIHI: "01-01-2024" }] 
+        } 
+      });
+      const res = await provider.getSeriesRange(["TP.TEST"]);
+      expect(res["TP_TEST"]).toBeDefined();
+    });
+
+    it("should handle ARRAY response in getSeriesRange", async () => {
+      setEVDSKey("key");
+      mockedAxios.post.mockResolvedValueOnce({ 
+        data: [
+          { SERIE_CODE: "TP_ARRAY", START_DATE: "01-01-2020", END_DATE: "01-01-2024" },
+          { serieCode: "tp_lowercase", startDate: "01-01-2021", endDate: "01-01-2025" },
+          { serieCode: null } // coverage for missing code
+        ] 
+      });
+      const res = await provider.getSeriesRange(["TP.ARRAY", "tp.lowercase"]);
+      expect(res["TP_ARRAY"]).toBeDefined();
+      expect(res["TP_LOWERCASE"]).toBeDefined();
+    });
+
+    it("should handle top-level dates in getSeriesRange", async () => {
+      setEVDSKey("key");
+      const testProvider = getEVDSProvider();
+      mockedAxios.post.mockResolvedValueOnce({ 
+        data: { 
+          startDate: "01-01-2020",
+          endDate: "01-01-2024"
+        } 
+      });
+      const res = await testProvider.getSeriesRange(["TP.TEST"]);
+      expect(res["TP_TEST"]).toEqual({ start: "01-01-2020", end: "01-01-2024" });
+    });
+
+    it("should handle getSeriesRange failure", async () => {
+      setEVDSKey("key");
+      mockedAxios.post.mockRejectedValueOnce(new Error("Fail"));
+      const res = await provider.getSeriesRange(["TP.TEST"]);
+      expect(res).toEqual({});
+    });
+
+    it("should resolve numeric frequency normalization", () => {
+      // @ts-ignore
+      expect(provider.resolveFrequency(9)).toBe(5);
+      // @ts-ignore
+      expect(provider.resolveFrequency(13)).toBe(6);
+      // @ts-ignore
+      expect(provider.resolveFrequency(16)).toBe(7);
+      // @ts-ignore
+      expect(provider.resolveFrequency(18)).toBe(8);
+    });
+
+    it("should throw APIError if key is missing in getSeriesData", async () => {
+      clearEVDSKey();
+      const testProvider = getEVDSProvider();
+      await expect(testProvider.getSeriesData(["S1"], "d", "d")).rejects.toThrow(/requires an API key/);
+    });
+
+    it("should handle postJson retry successfully", async () => {
+      setEVDSKey("key");
+      const testProvider = getEVDSProvider();
+      // Reset mocks for clear count
+      mockedAxios.post.mockReset();
+      mockedAxios.post
+        .mockRejectedValueOnce(new Error("Transient"))
+        .mockResolvedValueOnce({ data: { items: [] } });
+      
+      await testProvider.getSeriesRange(["TP.TEST"]);
+      expect(mockedAxios.post).toHaveBeenCalledTimes(2);
     });
   });
 });

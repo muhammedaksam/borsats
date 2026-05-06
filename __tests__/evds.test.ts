@@ -1,4 +1,14 @@
-import { EVDS, EVDSSeries, evdsSearch } from "~/evds";
+import { 
+  EVDS, 
+  EVDSSeries, 
+  evdsSearch, 
+  evdsCategories, 
+  evdsDatagroups, 
+  evdsSeries, 
+  evdsDashboard, 
+  evdsAnnouncements,
+  evdsDownload
+} from "~/evds";
 import { EVDSProvider, getEVDSProvider } from "~/providers/evds";
 
 jest.mock("~/providers/evds", () => {
@@ -40,7 +50,13 @@ describe("EVDS Module", () => {
         _datagroup: { DATAGROUP_CODE: "test_dg" },
         _category: { CATEGORY_ID: 1 }
       }),
-      resolveFrequency: jest.fn().mockReturnValue(5)
+      resolveFrequency: jest.fn().mockReturnValue(5),
+      getSeriesRange: jest.fn().mockResolvedValue({
+        "TP_TEST_1": { start: "01-01-2024", end: "31-01-2024" }
+      }),
+      getDatagroupData: jest.fn().mockResolvedValue({
+        items: [{ TARIH: "01-01-2024", TP_TEST_1: 100 }]
+      })
     };
     
     (getEVDSProvider as jest.Mock).mockReturnValue(mockProvider);
@@ -69,6 +85,23 @@ describe("EVDS Module", () => {
       expect(results.length).toBeGreaterThan(0);
       expect(results[0].NAME_TR).toContain("Test");
     });
+
+    it("should validate search term", async () => {
+      const evds = new EVDS();
+      // @ts-ignore
+      await expect(evds.search(null)).rejects.toThrow(/search term is required/);
+      await expect(evds.search("   ")).resolves.toEqual([]);
+    });
+
+    it("should search with different scopes", async () => {
+      const evds = new EVDS();
+      const catRes = await evds.search("Test", { scope: "categories" });
+      expect(catRes).toBeDefined();
+      const dgRes = await evds.search("Test", { scope: "datagroups" });
+      expect(dgRes).toBeDefined();
+      const serRes = await evds.search("Test", { scope: "series" });
+      expect(serRes).toBeDefined();
+    });
   });
 
   describe("EVDSSeries", () => {
@@ -93,6 +126,36 @@ describe("EVDS Module", () => {
       const series = new EVDSSeries("TP.TEST.1");
       const freq = await series.nativeFrequency();
       expect(freq).toBe("monthly");
+    });
+
+    it("should resolve start and end dates in history", async () => {
+      const series = new EVDSSeries("TP.TEST.1");
+      mockProvider.getSeriesData = jest.fn().mockResolvedValue({ items: [] });
+      await series.history({ start: "01-01-2020", end: "01-01-2024", aggregation: "avg", formula: "level" });
+      expect(mockProvider.getSeriesData).toHaveBeenCalled();
+    });
+
+    it("should determine frequency from string if number is missing", async () => {
+      mockProvider.findSeries = jest.fn().mockResolvedValue({
+        SERIE_CODE: "TP_TEST_2",
+        FREQUENCY_STR: "HAFTALIK"
+      });
+      const series = new EVDSSeries("TP.TEST.2");
+      const freq = await series.nativeFrequency();
+      expect(freq).toBe("weekly");
+    });
+
+    it("should return datagroup code", async () => {
+      const series = new EVDSSeries("TP.TEST.1");
+      const dg = await series.datagroup();
+      expect(dg).toBe("test_dg");
+    });
+
+    it("should return series range", async () => {
+      const series = new EVDSSeries("TP.TEST.1");
+      const range = await series.range();
+      expect(range.start).toBeInstanceOf(Date);
+      expect(range.end).toBeInstanceOf(Date);
     });
   });
 
@@ -128,6 +191,12 @@ describe("EVDS Module", () => {
       expect(result.portlet).toBe("test");
     });
 
+    it("should return EVDSSeries instance via series()", () => {
+      const evds = new EVDS();
+      const series = evds.series("TP.TEST");
+      expect(series).toBeInstanceOf(EVDSSeries);
+    });
+
     it("should fetch server search", async () => {
       const evds = new EVDS();
       mockProvider.searchServer = jest.fn().mockResolvedValue({ veriGruplari: [], seriler: [] });
@@ -143,19 +212,62 @@ describe("EVDS Module", () => {
       expect(result).toHaveLength(1);
       expect(result[0].SERIE_CODE).toBe("TP.A");
     });
+
+    it("should fetch datagroup data with various options", async () => {
+      const evds = new EVDS();
+      const result = await evds.datagroupData("test_dg", { period: "1y", frequency: "weekly", decimals: 4 });
+      expect(result).toHaveLength(1);
+      expect(result[0].Value).toBe(100);
+    });
+
+    it("should handle array payload in datagroupData", async () => {
+      const evds = new EVDS();
+      mockProvider.getDatagroupData = jest.fn().mockResolvedValue([
+        { TARIH: "01-01-2024", TP_X: 50 }
+      ]);
+      const result = await evds.datagroupData("test_dg");
+      expect(result).toHaveLength(1);
+      expect(result[0].Value).toBe(50);
+    });
   });
 
   describe("Module level functions", () => {
     it("should download multiple series", async () => {
-      const { evdsDownload } = await import("~/evds");
       const result = await evdsDownload(["TP.TEST.1"], { period: "1y" });
       expect(result).toHaveLength(2);
     });
 
     it("should fetch series history directly", async () => {
-      const { evdsSeries } = await import("~/evds");
       const result = await evdsSeries("TP.TEST.1", { start: "01-01-2024", end: "31-01-2024" });
       expect(result).toHaveLength(2);
+    });
+
+    it("should call module shortcuts", async () => {
+      mockProvider.getDashboard = jest.fn().mockResolvedValue({});
+      mockProvider.getAnnouncements = jest.fn().mockResolvedValue([]);
+      
+      await expect(evdsCategories()).resolves.toBeDefined();
+      await expect(evdsDatagroups()).resolves.toBeDefined();
+      await expect(evdsDashboard()).resolves.toBeDefined();
+      await expect(evdsAnnouncements()).resolves.toBeDefined();
+    });
+
+    it("should handle evdsDownload edge cases", async () => {
+      await expect(evdsDownload([])).rejects.toThrow(/at least one series code/);
+
+      mockProvider.getSeriesData = jest.fn().mockResolvedValue({
+        items: [{ TARIH: "01-01-2024", TP_S1: 100 }]
+      });
+      
+      const resSingle = await evdsDownload("TP_S1");
+      expect(resSingle[0].TP_S1).toBe(100);
+
+      mockProvider.getSeriesData = jest.fn().mockResolvedValue({
+        items: [{ TARIH: "01-01-2024", TP_M1: 10, TP_M2: 20 }]
+      });
+      const resMulti = await evdsDownload(["TP_M1", "TP_M2"]);
+      expect(resMulti[0]["TP.M1"]).toBe(10);
+      expect(resMulti[0]["TP.M2"]).toBe(20);
     });
   });
 });
