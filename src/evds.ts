@@ -5,8 +5,8 @@ import {
   clearEVDSKey,
   denormalizeCode,
   EVDSProvider,
-  FORMULA,
   formatEVDSDate,
+  FORMULA,
   FREQUENCY,
   getEVDSKey,
   getEVDSProvider,
@@ -59,7 +59,7 @@ function parseEVDSDate(value: string | undefined | null): Date | null {
     const month = (quarter - 1) * 3;
     return new Date(year, month, 1);
   }
-  
+
   const parsed = new Date(s);
   return isNaN(parsed.getTime()) ? null : parsed;
 }
@@ -80,21 +80,32 @@ function frameFromPayload(payload: any, seriesCodes: string[]): any[] {
   if (!rows || rows.length === 0) return [];
 
   const df: any[] = [];
-  
-  const normalizedDot = new Set(seriesCodes.map(c => denormalizeCode(c).toUpperCase()));
-  const normalizedUs = new Set(seriesCodes.map(c => normalizeCode(c).toUpperCase()));
+
+  const normalizedDot = new Set(
+    seriesCodes.map((c) => denormalizeCode(c).toUpperCase()),
+  );
+  const normalizedUs = new Set(
+    seriesCodes.map((c) => normalizeCode(c).toUpperCase()),
+  );
 
   for (const row of rows) {
-    let dateCol = Object.keys(row).find(c => ["TARIH", "DATE", "TARİH", "TARI"].includes(c.toUpperCase()));
+    let dateCol = Object.keys(row).find((c) =>
+      ["TARIH", "DATE", "TARİH", "TARI"].includes(c.toUpperCase()),
+    );
     if (!dateCol) {
-      dateCol = Object.keys(row).find(c => ["UNIXTIME", "dateString", "OBS_DATE"].includes(c));
+      dateCol = Object.keys(row).find((c) =>
+        ["UNIXTIME", "dateString", "OBS_DATE"].includes(c),
+      );
     }
-    
+
     let parsedDate: Date | null = null;
     if (dateCol) {
       if (dateCol === "UNIXTIME") {
         const v = row[dateCol];
-        const ts = typeof v === "object" && v.$numberLong ? parseInt(v.$numberLong) : parseInt(v);
+        const ts =
+          typeof v === "object" && v.$numberLong
+            ? parseInt(v.$numberLong)
+            : parseInt(v);
         if (!isNaN(ts)) parsedDate = new Date(ts * 1000);
       } else {
         parsedDate = parseEVDSDate(row[dateCol]);
@@ -105,12 +116,17 @@ function frameFromPayload(payload: any, seriesCodes: string[]): any[] {
     const newRow: any = { Date: parsedDate };
 
     for (const col of Object.keys(row)) {
-      if (["YEAR", "MONTH", "DAY", "QUARTER", "_DATE", "UNIXTIME"].includes(col.toUpperCase())) continue;
+      if (
+        ["YEAR", "MONTH", "DAY", "QUARTER", "_DATE", "UNIXTIME"].includes(
+          col.toUpperCase(),
+        )
+      )
+        continue;
       if (col === dateCol) continue;
 
       const colDot = denormalizeCode(col).toUpperCase();
       let targetCol = col;
-      
+
       if (normalizedDot.has(colDot)) {
         targetCol = denormalizeCode(col);
       } else if (colDot.includes("-")) {
@@ -130,11 +146,11 @@ function frameFromPayload(payload: any, seriesCodes: string[]): any[] {
 
     // Surface as "Value" if it's a single series
     if (seriesCodes.length === 1 && Object.keys(newRow).length === 2) {
-      const valKey = Object.keys(newRow).find(k => k !== "Date") as string;
+      const valKey = Object.keys(newRow).find((k) => k !== "Date") as string;
       newRow["Value"] = newRow[valKey];
       delete newRow[valKey];
     }
-    
+
     df.push(newRow);
   }
 
@@ -164,23 +180,24 @@ export class EVDSSeries {
   async info(): Promise<any> {
     if (this._infoCache) return this._infoCache;
     const located = await this._provider.findSeries(this._codeUser);
-    if (!located) throw new APIError(`EVDS series not found: ${this._codeUser}`);
+    if (!located)
+      throw new APIError(`EVDS series not found: ${this._codeUser}`);
 
     const info = { ...located };
     info.SERIE_CODE = denormalizeCode(info.SERIE_CODE || this._codeUser);
-    
+
     const dg = info._datagroup || {};
     const cat = info._category || {};
-    
+
     info.DATAGROUP_CODE = info.DATAGROUP_CODE || dg.DATAGROUP_CODE;
     info.DATAGROUP_TYPE = info.DATAGROUP_TYPE || dg.DATAGROUP_TYPE;
     info.CATEGORY_ID = info.CATEGORY_ID || cat.CATEGORY_ID;
     info.CATEGORY_TR = info.CATEGORY_TR || cat.TOPIC_TITLE_TR;
     info.CATEGORY_EN = info.CATEGORY_EN || cat.TOPIC_TITLE_ENG;
-    
+
     delete info._datagroup;
     delete info._category;
-    
+
     this._infoCache = info;
     return info;
   }
@@ -201,23 +218,27 @@ export class EVDSSeries {
     }
     const s = (inf.FREQUENCY_STR || "").toUpperCase();
     const mapping: Record<string, string> = {
-      "GÜNLÜK": "daily",
+      GÜNLÜK: "daily",
       "İŞ GÜNÜ": "workday",
-      "HAFTALIK": "weekly",
+      HAFTALIK: "weekly",
       "İKİ HAFTALIK": "biweekly",
-      "AYLIK": "monthly",
+      AYLIK: "monthly",
       "ÜÇ AYLIK": "quarterly",
       "ALTI AYLIK": "semiannual",
-      "YILLIK": "annual",
+      YILLIK: "annual",
     };
     return mapping[s] || null;
   }
 
-  async range(): Promise<{ start: Date | null, end: Date | null }> {
-    const freq = await this.nativeFrequency() || "monthly";
+  async range(): Promise<{ start: Date | null; end: Date | null }> {
+    const freq = (await this.nativeFrequency()) || "monthly";
     const inf = await this.info();
     const dg = inf.DATAGROUP_CODE || "";
-    const rng = await this._provider.getSeriesRange([this._codeUser], [dg], freq);
+    const rng = await this._provider.getSeriesRange(
+      [this._codeUser],
+      [dg],
+      freq,
+    );
     const entry = rng[this._codeNormalized.toUpperCase()] || {};
     return {
       start: parseEVDSDate(entry.start),
@@ -225,19 +246,26 @@ export class EVDSSeries {
     };
   }
 
-  async history(options: {
-    period?: string;
-    start?: string | Date;
-    end?: string | Date;
-    frequency?: string | number;
-    aggregation?: string;
-    formula?: string;
-    decimals?: number;
-    decimalSeparator?: string;
-  } = {}): Promise<any[]> {
-    const [startStr, endStr] = resolveWindow(options.period || "1y", options.start, options.end);
-    const freq = options.frequency || await this.nativeFrequency() || "monthly";
-    
+  async history(
+    options: {
+      period?: string;
+      start?: string | Date;
+      end?: string | Date;
+      frequency?: string | number;
+      aggregation?: string;
+      formula?: string;
+      decimals?: number;
+      decimalSeparator?: string;
+    } = {},
+  ): Promise<any[]> {
+    const [startStr, endStr] = resolveWindow(
+      options.period || "1y",
+      options.start,
+      options.end,
+    );
+    const freq =
+      options.frequency || (await this.nativeFrequency()) || "monthly";
+
     const payload = await this._provider.getSeriesData(
       [this._codeUser],
       startStr,
@@ -248,9 +276,9 @@ export class EVDSSeries {
       options.decimals || 2,
       0,
       "json",
-      options.decimalSeparator || "."
+      options.decimalSeparator || ".",
     );
-    
+
     return frameFromPayload(payload, [this._codeUser]);
   }
 }
@@ -280,7 +308,7 @@ export class EVDS {
     const rows: any[] = [];
     for (const c of cats) {
       if (categoryId !== undefined && c.CATEGORY_ID !== categoryId) continue;
-      for (const dg of (c.DATAGROUPS || [])) {
+      for (const dg of c.DATAGROUPS || []) {
         rows.push({
           DATAGROUP_CODE: dg.DATAGROUP_CODE,
           DATAGROUP_TYPE: dg.DATAGROUP_TYPE,
@@ -317,23 +345,31 @@ export class EVDS {
     }));
   }
 
-  async search(term: string, options: { lang?: "tr" | "en", scope?: "all" | "categories" | "datagroups" | "series" } = {}): Promise<any[]> {
-    if (!term || typeof term !== "string") throw new Error("search term is required");
+  async search(
+    term: string,
+    options: {
+      lang?: "tr" | "en";
+      scope?: "all" | "categories" | "datagroups" | "series";
+    } = {},
+  ): Promise<any[]> {
+    if (!term || typeof term !== "string")
+      throw new Error("search term is required");
     const needle = term.trim().toLowerCase();
     if (!needle) return [];
 
     const lang = options.lang || "tr";
     const scope = options.scope || "all";
     const results: any[] = [];
-    
+
     const cats = await this._provider.getCategories();
-    
+
     if (["all", "categories"].includes(scope)) {
       for (const c of cats) {
         const tr = (c.TOPIC_TITLE_TR || "").toLowerCase();
         const en = (c.TOPIC_TITLE_ENG || "").toLowerCase();
-        const hit = (lang === "tr" && (tr.includes(needle) || en.includes(needle))) || 
-                    (lang === "en" && en.includes(needle));
+        const hit =
+          (lang === "tr" && (tr.includes(needle) || en.includes(needle))) ||
+          (lang === "en" && en.includes(needle));
         if (hit) {
           results.push({
             hit_type: "category",
@@ -347,11 +383,12 @@ export class EVDS {
 
     if (["all", "datagroups"].includes(scope)) {
       for (const c of cats) {
-        for (const dg of (c.DATAGROUPS || [])) {
+        for (const dg of c.DATAGROUPS || []) {
           const tr = (dg.DATAGROUP_TYPE || "").toLowerCase();
           const en = (dg.DATAGROUP_TYPE_ENG || "").toLowerCase();
-          const hit = (lang === "tr" && (tr.includes(needle) || en.includes(needle))) || 
-                      (lang === "en" && en.includes(needle));
+          const hit =
+            (lang === "tr" && (tr.includes(needle) || en.includes(needle))) ||
+            (lang === "en" && en.includes(needle));
           if (hit) {
             results.push({
               hit_type: "datagroup",
@@ -368,18 +405,22 @@ export class EVDS {
 
     if (["all", "series"].includes(scope)) {
       for (const c of cats) {
-        for (const dg of (c.DATAGROUPS || [])) {
+        for (const dg of c.DATAGROUPS || []) {
           const dgCode = dg.DATAGROUP_CODE;
           if (!dgCode) continue;
-          
+
           try {
             const seriesList = await this._provider.getSeriesList(dgCode);
             for (const s of seriesList) {
               const tr = (s.SERIE_NAME || "").toLowerCase();
               const en = (s.SERIE_NAME_ENG || "").toLowerCase();
               const sc = (s.SERIE_CODE || "").toLowerCase();
-              const hit = (lang === "tr" && (tr.includes(needle) || en.includes(needle) || sc.includes(needle))) || 
-                          (lang === "en" && (en.includes(needle) || sc.includes(needle)));
+              const hit =
+                (lang === "tr" &&
+                  (tr.includes(needle) ||
+                    en.includes(needle) ||
+                    sc.includes(needle))) ||
+                (lang === "en" && (en.includes(needle) || sc.includes(needle)));
               if (hit) {
                 results.push({
                   hit_type: "series",
@@ -447,15 +488,19 @@ export class EVDS {
       end?: string | Date;
       frequency?: string | number;
       decimals?: number;
-    } = {}
+    } = {},
   ): Promise<any[]> {
-    const [startStr, endStr] = resolveWindow(options.period, options.start, options.end);
+    const [startStr, endStr] = resolveWindow(
+      options.period,
+      options.start,
+      options.end,
+    );
     const payload = await this._provider.getDatagroupData(
       datagroupCode,
       startStr,
       endStr,
       options.frequency,
-      options.decimals || 2
+      options.decimals || 2,
     );
 
     let rows: any[] = [];
@@ -474,7 +519,12 @@ export class EVDS {
     let seriesCols: string[] = [];
     if (rows.length > 0) {
       const sampleKeys = Object.keys(rows[0]);
-      seriesCols = sampleKeys.filter(k => !["TARIH", "DATE", "UNIXTIME", "DATESTRING"].includes(k.toUpperCase()));
+      seriesCols = sampleKeys.filter(
+        (k) =>
+          !["TARIH", "DATE", "UNIXTIME", "DATESTRING"].includes(
+            k.toUpperCase(),
+          ),
+      );
     }
 
     return frameFromPayload(payload, seriesCols);
@@ -486,7 +536,13 @@ export function evdsCategories(): Promise<any[]> {
   return new EVDS().categories();
 }
 
-export function evdsSearch(term: string, options?: { lang?: "tr" | "en", scope?: "all" | "categories" | "datagroups" | "series" }): Promise<any[]> {
+export function evdsSearch(
+  term: string,
+  options?: {
+    lang?: "tr" | "en";
+    scope?: "all" | "categories" | "datagroups" | "series";
+  },
+): Promise<any[]> {
   return new EVDS().search(term, options);
 }
 
@@ -501,7 +557,7 @@ export function evdsSeries(
     formula?: string;
     decimals?: number;
     decimalSeparator?: string;
-  } = {}
+  } = {},
 ): Promise<any[]> {
   return new EVDSSeries(code).history(options);
 }
@@ -517,14 +573,19 @@ export async function evdsDownload(
     formula?: string | string[];
     decimals?: number;
     decimalSeparator?: string;
-  } = {}
+  } = {},
 ): Promise<any[]> {
   const codesList = Array.isArray(codes) ? codes : [codes];
-  if (codesList.length === 0) throw new Error("at least one series code is required");
-  
-  const [startStr, endStr] = resolveWindow(options.period || "1y", options.start, options.end);
+  if (codesList.length === 0)
+    throw new Error("at least one series code is required");
+
+  const [startStr, endStr] = resolveWindow(
+    options.period || "1y",
+    options.start,
+    options.end,
+  );
   const provider = getEVDSProvider();
-  
+
   const payload = await provider.getSeriesData(
     codesList,
     startStr,
@@ -535,23 +596,30 @@ export async function evdsDownload(
     options.decimals || 2,
     0,
     "json",
-    options.decimalSeparator || "."
+    options.decimalSeparator || ".",
   );
-  
+
   const df = frameFromPayload(payload, codesList);
-  
+
   if (codesList.length === 1 && df.length > 0 && "Value" in df[0]) {
-    return df.map(row => {
+    return df.map((row) => {
       const newRow = { ...row };
       newRow[codesList[0]] = newRow.Value;
       delete newRow.Value;
       return newRow;
     });
   }
-  
+
   return df;
 }
 
 export {
-  AGGREGATION, clearEVDSKey, EVDSProvider, FORMULA, FREQUENCY, getEVDSKey, getEVDSProvider, setEVDSKey
+  AGGREGATION,
+  clearEVDSKey,
+  EVDSProvider,
+  FORMULA,
+  FREQUENCY,
+  getEVDSKey,
+  getEVDSProvider,
+  setEVDSKey,
 };
