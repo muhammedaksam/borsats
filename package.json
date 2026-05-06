@@ -1,6 +1,6 @@
 {
   "name": "@muhammedaksam/borsats",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "type": "module",
   "description": "TypeScript library for Turkish financial markets - BIST stocks, forex, crypto, funds, inflation",
   "author": "Muhammed Mustafa AKŞAM <info@muhammedaksam.com.tr> (https://github.com/muhammedaksam)",
@@ -75,7 +75,7 @@
     "eslint-plugin-prettier": "^5.5.5",
     "jest": "^30.3.0",
     "prettier": "^3.8.3",
-    "prettier-plugin-tailwindcss": "^0.7.4",
+    "prettier-plugin-tailwindcss": "^0.8.0",
     "ts-jest": "^29.4.9",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3"

@@ -69,6 +69,12 @@ export { Eurobond } from "~/eurobond";
 export * from "~/exceptions";
 
 export * from "~/tax";
+
+// EVDS
+export * from "~/evds";
+export { EVDS, EVDSSeries } from "~/evds";
+export * from "~/providers/evds";
+
 // tradingview-screener-native - selective exports to avoid conflicts
 export {
   FIELD_MAP,

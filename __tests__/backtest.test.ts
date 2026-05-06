@@ -1,5 +1,6 @@
 import { BacktestEngine, StrategyFunc } from "~/backtest";
 import { OHLCVData } from "~/types";
+import { Ticker } from "~/ticker";
 
 // Mock Ticker to avoid network requests
 jest.mock("~/ticker", () => {
@@ -71,8 +72,7 @@ describe("BacktestEngine", () => {
   });
 
   it("should handle error when no data found", async () => {
-    const { Ticker } = require("~/ticker");
-    Ticker.mockImplementationOnce((_symbol: string) => ({
+    (Ticker as jest.Mock).mockImplementationOnce((_symbol: string) => ({
       history: jest.fn().mockResolvedValue([]),
     }));
 

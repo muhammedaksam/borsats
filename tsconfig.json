@@ -1,10 +1,9 @@
 {
   "compilerOptions": {
-    "ignoreDeprecations": "6.0",
     "target": "ES2020",
     "module": "ESNext",
     "lib": ["ES2020"],
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "allowJs": false,
     "checkJs": false,
@@ -23,7 +22,7 @@
     "skipLibCheck": true,
     "allowSyntheticDefaultImports": true,
     "types": ["node", "jest"],
-    "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
     "paths": {
       "~/*": ["./src/*"]
     }
