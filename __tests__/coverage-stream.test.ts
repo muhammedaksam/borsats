@@ -1,24 +1,23 @@
-import events from "events";
+import mockEvents from "events";
 import { TradingViewStream } from "~/stream";
 
 declare global {
-  var lastSocket: events.EventEmitter | null;
+  var lastSocket: mockEvents.EventEmitter | null;
   var mockSend: jest.Mock;
   var mockClose: jest.Mock;
 }
 
 jest.mock("ws", () => {
-  const EventEmitter = require("events");
   if (!global.mockSend) global.mockSend = jest.fn();
   if (!global.mockClose) global.mockClose = jest.fn();
-  class MockWebSocket extends EventEmitter {
+  class MockWebSocket extends mockEvents.EventEmitter {
     static OPEN = 1;
     readyState = 1;
     send = global.mockSend;
     close = global.mockClose;
     constructor() {
       super();
-      global.lastSocket = this as unknown as events.EventEmitter;
+      global.lastSocket = this as unknown as mockEvents.EventEmitter;
     }
   }
   return MockWebSocket;

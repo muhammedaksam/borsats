@@ -1,11 +1,10 @@
-import events from "events";
+import mockEvents from "events";
 
 import { TradingViewStream } from "~/stream";
 
 // Define global interface for the test context
 declare global {
-  // eslint-disable-next-line no-var
-  var lastSocket: events.EventEmitter | null;
+  var lastSocket: mockEvents.EventEmitter | null;
   var mockSend: jest.Mock;
   var mockClose: jest.Mock;
 }
@@ -13,22 +12,20 @@ declare global {
 // 1. Setup global mocks before imports (or reliant on lazy execution of factory)
 // Actually, better pattern: define the mock factory to use a local class and assign to global
 jest.mock("ws", () => {
-  const EventEmitter = require("events");
-
   // Create global spies
   // Note: global objects persist, so we need to clear them in beforeEach
   if (!global.mockSend) global.mockSend = jest.fn();
   if (!global.mockClose) global.mockClose = jest.fn();
 
-  class MockWebSocket extends EventEmitter {
+  class MockWebSocket extends mockEvents.EventEmitter {
     static OPEN = 1;
     readyState = 1;
     send = global.mockSend;
     close = global.mockClose;
 
-    constructor(url: string, _options: unknown) {
+    constructor(_url: string, _options: unknown) {
       super();
-      global.lastSocket = this as unknown as events.EventEmitter;
+      global.lastSocket = this as unknown as mockEvents.EventEmitter;
     }
   }
   return MockWebSocket;
