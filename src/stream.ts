@@ -810,14 +810,14 @@ export class TradingViewStream extends EventEmitter {
       const rawCandles = seriesData?.s || [];
 
       const candles: StreamCandle[] = rawCandles
-        .filter((c) => c.v && c.v.length >= 6)
+        .filter((c) => c.v && c.v.length >= 5)
         .map((c) => ({
           time: new Date(c.v[0] * 1000),
           open: c.v[1],
           high: c.v[2],
           low: c.v[3],
           close: c.v[4],
-          volume: c.v[5],
+          volume: c.v.length >= 6 ? c.v[5] : 0,
         }));
 
       if (candles.length > 0) {
