@@ -440,7 +440,7 @@ export class TradingViewProvider extends BaseProvider {
 
               for (const candle of candles) {
                 const v = candle.v;
-                if (v && v.length >= 6) {
+                if (v && v.length >= 5) {
                   const timestamp = Math.floor(v[0]);
                   periods[timestamp] = {
                     date: new Date(timestamp * 1000),
@@ -448,7 +448,7 @@ export class TradingViewProvider extends BaseProvider {
                     high: v[2],
                     low: v[3],
                     close: v[4],
-                    volume: v[5],
+                    volume: v.length >= 6 ? v[5] : 0.0,
                   };
                 }
               }
