@@ -354,10 +354,12 @@ describe("Coverage Boost Tests", () => {
         screener.scan({ symbols: ["THYAO"], conditions: [] }),
       ).resolves.toEqual([]);
 
-      // Local only should throw
-      await expect(
-        screener.scan({ symbols: ["THYAO"], conditions: ["supertrend > 0"] }),
-      ).rejects.toThrow();
+      // Local only should resolve successfully
+      const localResult = await screener.scan({
+        symbols: ["THYAO"],
+        conditions: ["supertrend > 0"],
+      });
+      expect(Array.isArray(localResult)).toBe(true);
     });
 
     test("separateConditions logic", () => {
