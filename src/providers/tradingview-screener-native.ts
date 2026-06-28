@@ -7,6 +7,9 @@
 
 import { APIError } from "~/exceptions";
 import { BaseProvider } from "~/providers/base";
+import { calculateSupertrend, calculateTilsonT3 } from "~/technical";
+import { Ticker } from "~/ticker";
+import { Interval } from "~/types";
 
 export const FIELD_MAP: Record<string, string> = {
   // Price fields
@@ -393,12 +396,14 @@ export class TVScreenerProvider extends BaseProvider {
       );
     }
 
-    // Only local conditions - need to implement local calculation
+    // Only local conditions
     if (localConditions.length > 0 && apiConditions.length === 0) {
-      // For now, throw error - local calc requires fetching historical data
-      throw new Error(
-        `Local calculation conditions not yet supported: ${localConditions.join(", ")}`,
+      const localResults = await this._applyLocalConditions(
+        symbolsUpper,
+        localConditions,
+        interval,
       );
+      return localResults.slice(0, limit);
     }
 
     // Both - first filter with API, then apply local
@@ -409,8 +414,187 @@ export class TVScreenerProvider extends BaseProvider {
       interval,
       limit * 5,
     );
-    // Local filtering would go here
-    return apiResults.slice(0, limit);
+
+    if (apiResults.length === 0) {
+      return [];
+    }
+
+    const apiSymbols = apiResults.map((r) => r.symbol);
+    const localResults = await this._applyLocalConditions(
+      apiSymbols,
+      localConditions,
+      interval,
+    );
+
+    if (localResults.length === 0) {
+      return [];
+    }
+
+    // Merge API data with local calculations
+    const merged = localResults.map((local) => {
+      const api = apiResults.find((r) => r.symbol === local.symbol);
+      if (api) {
+        return { ...api, ...local };
+      }
+      return local;
+    });
+
+    return merged.slice(0, limit);
+  }
+
+  /**
+   * Apply local calculation conditions to symbols.
+   * Fetches historical data, calculates indicators, and filters.
+   */
+  private async _applyLocalConditions(
+    symbols: string[],
+    conditions: string[],
+    interval: string,
+  ): Promise<ScanResult[]> {
+    if (!symbols.length || !conditions.length) {
+      return [];
+    }
+
+    const processSymbol = async (
+      symbol: string,
+    ): Promise<ScanResult | null> => {
+      try {
+        const ticker = new Ticker(symbol);
+        const history = await ticker.history({
+          period: "3mo",
+          interval: interval as Interval,
+        });
+
+        if (!history || history.length < 20) {
+          return null;
+        }
+
+        const indicators: Record<string, number | null> = {};
+
+        // Calculate Supertrend
+        const st = calculateSupertrend(history);
+        if (st.length > 0) {
+          const lastSt = st[st.length - 1];
+          indicators["supertrend"] = lastSt.supertrend;
+          indicators["supertrend_direction"] = lastSt.direction;
+          indicators["supertrend_upper"] = lastSt.upper;
+          indicators["supertrend_lower"] = lastSt.lower;
+        }
+
+        // Calculate Tilson T3
+        const t3 = calculateTilsonT3(history);
+        if (t3.length > 0) {
+          const lastT3 = t3[t3.length - 1];
+          indicators["t3"] = lastT3;
+          indicators["tilson_t3"] = lastT3;
+          indicators["t3_5"] = lastT3;
+        }
+
+        // Add price data
+        const lastClose = history[history.length - 1].close;
+        indicators["close"] = lastClose;
+        indicators["price"] = lastClose;
+
+        // Check all conditions
+        for (const cond of conditions) {
+          if (!this._evaluateLocalCondition(cond, indicators)) {
+            return null;
+          }
+        }
+
+        const result: ScanResult = {
+          symbol,
+          close: lastClose,
+          ...indicators,
+        };
+        return result;
+      } catch {
+        return null;
+      }
+    };
+
+    // Limit concurrency to 16 workers
+    const limitConcurrency = async (
+      limit: number,
+      array: string[],
+      fn: (item: string) => Promise<ScanResult | null>,
+    ): Promise<ScanResult[]> => {
+      const results: (ScanResult | null)[] = new Array(array.length);
+      let index = 0;
+
+      const worker = async () => {
+        while (index < array.length) {
+          const currentIndex = index++;
+          results[currentIndex] = await fn(array[currentIndex]);
+        }
+      };
+
+      const workers = Array.from(
+        { length: Math.min(limit, array.length) },
+        worker,
+      );
+      await Promise.all(workers);
+      return results.filter((r): r is ScanResult => r !== null);
+    };
+
+    return limitConcurrency(16, symbols, processSymbol);
+  }
+
+  /**
+   * Evaluate a condition against calculated indicators.
+   */
+  private _evaluateLocalCondition(
+    condition: string,
+    indicators: Record<string, number | null>,
+  ): boolean {
+    condition = condition.trim().toLowerCase();
+
+    // Parse condition: field op value
+    const match = condition.match(/^(\w+)\s*(>=|<=|>|<|==|!=)\s*(.+)$/);
+    if (!match) {
+      return true; // Skip unparseable conditions
+    }
+
+    const field = match[1].trim();
+    const opStr = match[2].trim();
+    const rightStr = match[3].trim();
+
+    // Get left value
+    const leftVal = indicators[field];
+    if (leftVal === undefined || leftVal === null) {
+      return false;
+    }
+
+    // Get right value (number or another field)
+    let rightVal: number;
+    const parsedRight = this.parseNumber(rightStr);
+    if (!isNaN(parsedRight)) {
+      rightVal = parsedRight;
+    } else {
+      const fieldVal = indicators[rightStr];
+      if (fieldVal === undefined || fieldVal === null) {
+        return false;
+      }
+      rightVal = fieldVal;
+    }
+
+    // Apply operator
+    switch (opStr) {
+      case ">":
+        return leftVal > rightVal;
+      case "<":
+        return leftVal < rightVal;
+      case ">=":
+        return leftVal >= rightVal;
+      case "<=":
+        return leftVal <= rightVal;
+      case "==":
+        return leftVal === rightVal;
+      case "!=":
+        return leftVal !== rightVal;
+      default:
+        return true;
+    }
   }
 
   private async scanAPI(
