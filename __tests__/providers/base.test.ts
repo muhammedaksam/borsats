@@ -1,5 +1,28 @@
+import axios from "axios";
 import { APIError } from "~/exceptions";
 import { BaseProvider } from "~/providers/base";
+import { sleep } from "~/utils/helpers";
+
+// Mock axios
+jest.mock("axios");
+const mockedAxios = axios as jest.Mocked<typeof axios>;
+
+// Mock sleep to resolve immediately so tests run instantly
+jest.mock("~/utils/helpers", () => {
+  const original = jest.requireActual("~/utils/helpers");
+  return {
+    ...original,
+    sleep: jest.fn().mockResolvedValue(undefined),
+  };
+});
+
+const mockedSleep = sleep as jest.MockedFunction<typeof sleep>;
+
+const mockClient = {
+  request: jest.fn(),
+};
+mockedAxios.create.mockReturnValue(mockClient as any);
+mockedAxios.isAxiosError.mockImplementation((err: any) => err?.isAxiosError === true);
 
 // TestProvider extends BaseProvider for testing purposes
 class TestProvider extends BaseProvider {
@@ -20,7 +43,9 @@ class TestProvider extends BaseProvider {
 }
 
 describe("BaseProvider Tests", () => {
-  jest.setTimeout(30000);
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
 
   test("BaseProvider construction with default config", () => {
     const provider = new TestProvider();
@@ -42,109 +67,138 @@ describe("BaseProvider Tests", () => {
 
   test("BaseProvider successful request", async () => {
     const provider = new TestProvider();
-    try {
-      const result = await provider.testRequest("/get");
-      expect(result).toBeDefined();
-    } catch (e) {
-      console.warn("BaseProvider request test continuing:", e);
-    }
+    mockClient.request.mockResolvedValue({ data: { foo: "bar" } });
+
+    const result = await provider.testRequest("/get");
+    expect(result).toEqual({ foo: "bar" });
+    expect(mockClient.request).toHaveBeenCalledTimes(1);
   });
 
   test("BaseProvider cache hit", async () => {
     const provider = new TestProvider({
       cache: { ttl: 300, enabled: true },
     });
-    try {
-      await provider.testRequest("/get");
-      await provider.testRequest("/get"); // Should hit cache
-    } catch (e) {
-      console.warn("Cache test continuing:", e);
-    }
+    mockClient.request.mockResolvedValue({ data: { foo: "bar" } });
+
+    const result1 = await provider.testRequest("/get");
+    const result2 = await provider.testRequest("/get"); // Should hit cache
+
+    expect(result1).toEqual({ foo: "bar" });
+    expect(result2).toEqual({ foo: "bar" });
+    expect(mockClient.request).toHaveBeenCalledTimes(1);
   });
 
   test("BaseProvider clearCache", async () => {
-    const provider = new TestProvider();
+    const provider = new TestProvider({
+      cache: { ttl: 300, enabled: true },
+    });
+    mockClient.request.mockResolvedValue({ data: { foo: "bar" } });
+
+    await provider.testRequest("/get");
     provider.testClearCache();
-    expect(provider).toBeDefined();
+    await provider.testRequest("/get"); // Should request again after clearCache
+
+    expect(mockClient.request).toHaveBeenCalledTimes(2);
   });
 
   test("BaseProvider request with custom headers", async () => {
     const provider = new TestProvider();
-    try {
-      await provider.testRequest("/headers", {
+    mockClient.request.mockResolvedValue({ data: {} });
+
+    await provider.testRequest("/headers", {
+      headers: { "X-Custom-Header": "test" },
+    });
+
+    expect(mockClient.request).toHaveBeenCalledWith(
+      expect.objectContaining({
         headers: { "X-Custom-Header": "test" },
-      });
-    } catch (e) {
-      console.warn("Custom headers test continuing:", e);
-    }
+      })
+    );
   });
 
   test("BaseProvider request with params", async () => {
     const provider = new TestProvider();
-    try {
-      await provider.testRequest("/get", {
+    mockClient.request.mockResolvedValue({ data: {} });
+
+    await provider.testRequest("/get", {
+      params: { foo: "bar", test: "123" },
+    });
+
+    expect(mockClient.request).toHaveBeenCalledWith(
+      expect.objectContaining({
         params: { foo: "bar", test: "123" },
-      });
-    } catch (e) {
-      console.warn("Params test continuing:", e);
-    }
+      })
+    );
   });
 
   test("BaseProvider POST request", async () => {
     const provider = new TestProvider();
-    try {
-      await provider.testRequest("/post", {
+    mockClient.request.mockResolvedValue({ data: {} });
+
+    await provider.testRequest("/post", {
+      method: "POST",
+      data: { key: "value" },
+    });
+
+    expect(mockClient.request).toHaveBeenCalledWith(
+      expect.objectContaining({
         method: "POST",
         data: { key: "value" },
-      });
-    } catch (e) {
-      console.warn("POST test continuing:", e);
-    }
+      })
+    );
   });
 
   test("BaseProvider handles 404 error", async () => {
     const provider = new TestProvider();
-    try {
-      await provider.testRequest("/status/404");
-    } catch (e) {
-      expect(e).toBeInstanceOf(APIError);
-    }
+    const axiosError = new Error("Not Found") as any;
+    axiosError.isAxiosError = true;
+    axiosError.response = { status: 404, data: "Not Found" };
+    mockClient.request.mockRejectedValue(axiosError);
+
+    await expect(provider.testRequest("/status/404")).rejects.toThrow(APIError);
   });
 
   test("BaseProvider handles 500 error with retry", async () => {
     const provider = new TestProvider({ maxRetries: 1 });
-    try {
-      await provider.testRequest("/status/500");
-    } catch (e) {
-      expect(e).toBeInstanceOf(APIError);
-    }
+    const axiosError = new Error("Internal Server Error") as any;
+    axiosError.isAxiosError = true;
+    axiosError.response = { status: 500 };
+    mockClient.request.mockRejectedValue(axiosError);
+
+    await expect(provider.testRequest("/status/500")).rejects.toThrow(APIError);
+    expect(mockClient.request).toHaveBeenCalledTimes(2); // 1 initial + 1 retry
   });
 
   test("BaseProvider rate limiting enforcement", async () => {
-    const provider = new TestProvider({ rateLimit: 1 });
-    try {
-      await provider.testRequest("/delay/1");
-      await provider.testRequest("/delay/1");
-    } catch (e) {
-      console.warn("Rate limit test continuing:", e);
-    }
+    const provider = new TestProvider({ rateLimit: 1, cache: { enabled: false } });
+    mockClient.request.mockResolvedValue({ data: { success: true } });
+
+    await provider.testRequest("/get1");
+    await provider.testRequest("/get2"); // Second request triggers rate limit
+
+    expect(mockClient.request).toHaveBeenCalledTimes(2);
+    expect(mockedSleep).toHaveBeenCalled();
   });
 
   test("BaseProvider retry with exponential backoff", async () => {
     const provider = new TestProvider({ maxRetries: 2 });
-    try {
-      await provider.testRequest("/status/503");
-    } catch (e) {
-      expect(e).toBeInstanceOf(APIError);
-    }
+    const axiosError = new Error("Service Unavailable") as any;
+    axiosError.isAxiosError = true;
+    axiosError.response = { status: 503 };
+    mockClient.request.mockRejectedValue(axiosError);
+
+    await expect(provider.testRequest("/status/503")).rejects.toThrow(APIError);
+    expect(mockClient.request).toHaveBeenCalledTimes(3); // 1 initial + 2 retries
+    expect(mockedSleep).toHaveBeenCalledTimes(2); // Should backoff twice
   });
 
   test("BaseProvider custom timeout", async () => {
     const provider = new TestProvider({ timeout: 100 });
-    try {
-      await provider.testRequest("/delay/2");
-    } catch (e) {
-      expect(e).toBeDefined();
-    }
+    const timeoutError = new Error("timeout of 100ms exceeded") as any;
+    timeoutError.isAxiosError = true;
+    timeoutError.code = "ECONNABORTED";
+    mockClient.request.mockRejectedValue(timeoutError);
+
+    await expect(provider.testRequest("/delay/2")).rejects.toThrow();
   });
 });
