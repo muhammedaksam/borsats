@@ -2,11 +2,16 @@
 module.exports = {
   preset: "ts-jest",
   testEnvironment: "node",
-  maxWorkers: 2,
-  testTimeout: 120000,
+  maxWorkers: "50%",
+  testTimeout: 30000,
   roots: ["<rootDir>/src", "<rootDir>/__tests__"],
   testMatch: ["**/__tests__/**/*.ts", "**/?(*.)+(spec|test).ts"],
-  testPathIgnorePatterns: ["/node_modules/", "__tests__/helpers/"],
+  testPathIgnorePatterns: [
+    "/node_modules/",
+    "__tests__/helpers/",
+    "__tests__/integration/",
+  ],
+  setupFilesAfterEnv: ["<rootDir>/__tests__/helpers/block-network.ts"],
   moduleNameMapper: {
     "^~/(.*)$": "<rootDir>/src/$1",
   },

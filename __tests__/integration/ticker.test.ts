@@ -1,5 +1,5 @@
 import { Ticker } from "~/ticker";
-import { resilientTest } from "./helpers/network-utils";
+import { resilientTest } from "../helpers/network-utils";
 
 describe("Ticker Integration Tests", () => {
   jest.setTimeout(60000);

@@ -1,5 +1,5 @@
 import { getIsYatirimProvider } from "~/providers/isyatirim";
-import { resilientTest } from "../helpers/network-utils";
+import { resilientTest } from "../../helpers/network-utils";
 
 describe("IsYatirimProvider", () => {
   const provider = getIsYatirimProvider();

@@ -2,7 +2,11 @@ import { BacktestEngine, StrategyFunc } from "~/backtest";
 import { OHLCVData } from "~/types";
 import { Ticker } from "~/ticker";
 
-// Mock Ticker to avoid network requests
+// Mock Ticker and riskFreeRate to avoid network requests
+jest.mock("~/bond", () => ({
+  riskFreeRate: jest.fn().mockResolvedValue(0.3),
+}));
+
 jest.mock("~/ticker", () => {
   return {
     Ticker: jest.fn().mockImplementation((_symbol: string) => {

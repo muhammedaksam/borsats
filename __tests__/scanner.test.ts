@@ -3,9 +3,29 @@ import { scan, TechnicalScanner } from "~/scanner";
 // Mock the providers
 jest.mock("~/providers/bist-index", () => ({
   getBistIndexProvider: jest.fn(() => ({
+    getComponents: jest
+      .fn()
+      .mockResolvedValue([
+        { symbol: "THYAO", name: "THYAO" },
+        { symbol: "GARAN", name: "GARAN" },
+        { symbol: "ASELS", name: "ASELS" },
+      ]),
     getIndexConstituents: jest
       .fn()
       .mockResolvedValue(["THYAO", "GARAN", "ASELS"]),
+  })),
+}));
+
+jest.mock("~/providers/tradingview-screener-native", () => ({
+  getTVScreenerProvider: jest.fn(() => ({
+    scan: jest.fn().mockImplementation(async ({ symbols, limit }: { symbols: string[]; limit?: number }) => {
+      const all = [
+        { symbol: "THYAO", close: 100, rsi: 25, sma_50: 95, volume: 1500000 },
+        { symbol: "GARAN", close: 80, rsi: 45, sma_50: 85, volume: 500000 },
+        { symbol: "ASELS", close: 120, rsi: 28, sma_50: 110, volume: 2000000 },
+      ].filter((r) => !symbols?.length || symbols.includes(r.symbol));
+      return typeof limit === "number" ? all.slice(0, limit) : all;
+    }),
   })),
 }));
 

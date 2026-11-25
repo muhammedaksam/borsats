@@ -48,7 +48,11 @@ class MockTEFAS extends TEFASProvider {
   }
 }
 
-// Overwrite singleton
+// Overwrite singletons to keep unit tests offline
+jest.mock("~/bond", () => ({
+  riskFreeRate: jest.fn().mockResolvedValue(0.3),
+}));
+
 jest.mock("~/providers/tefas", () => {
   const original = jest.requireActual("~/providers/tefas");
   return {

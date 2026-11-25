@@ -1,5 +1,5 @@
 import { getVIOPProvider } from "~/providers/viop";
-import { resilientTest } from "../helpers/network-utils";
+import { resilientTest } from "../../helpers/network-utils";
 
 describe("VIOPProvider", () => {
   const provider = getVIOPProvider();

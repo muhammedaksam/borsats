@@ -1,5 +1,5 @@
 import { getBTCTurkProvider } from "~/providers/btcturk";
-import { resilientTest } from "../helpers/network-utils";
+import { resilientTest } from "../../helpers/network-utils";
 
 describe("BTCTurkProvider", () => {
   let provider: ReturnType<typeof getBTCTurkProvider>;

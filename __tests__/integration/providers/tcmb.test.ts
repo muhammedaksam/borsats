@@ -1,5 +1,5 @@
 import { getTCMBProvider } from "~/providers/tcmb";
-import { resilientTest } from "../helpers/network-utils";
+import { resilientTest } from "../../helpers/network-utils";
 
 describe("TCMBProvider", () => {
   const provider = getTCMBProvider();

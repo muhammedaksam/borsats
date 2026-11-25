@@ -1,5 +1,5 @@
 import { getKAPProvider } from "~/providers/kap";
-import { resilientTest } from "../helpers/network-utils";
+import { resilientTest } from "../../helpers/network-utils";
 
 describe("KAPProvider", () => {
   const provider = getKAPProvider();

@@ -1,5 +1,5 @@
 import { TCMB, policyRate as tcmbPolicyRate } from "~/tcmb";
-import { resilientTest } from "./helpers/network-utils";
+import { resilientTest } from "../helpers/network-utils";
 
 describe("TCMB Module", () => {
   jest.setTimeout(60000);

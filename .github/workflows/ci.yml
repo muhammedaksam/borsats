@@ -52,10 +52,11 @@ jobs:
       - name: Check Prettier formatting
         run: pnpm run format:check
 
-      - name: Run tests
+      - name: Run unit tests (non-coverage matrix entries)
+        if: matrix.node-version != '22.x'
         run: pnpm run test
 
-      - name: Generate coverage report (Node.js 22 only)
+      - name: Run unit tests with coverage (Node.js 22)
         if: matrix.node-version == '22.x'
         run: pnpm run test:coverage
 

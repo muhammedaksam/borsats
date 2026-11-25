@@ -57,112 +57,11 @@ describe("Portfolio Module", () => {
     expect(p.toDict().benchmark).toBe("BIST100");
   });
 
-  test("Portfolio value", async () => {
-    const p = new Portfolio();
-    p.add("THYAO", { shares: 10, cost: 200 });
-    const value = await p.value;
-    expect(typeof value).toBe("number");
-  });
-
   test("Portfolio cost", () => {
     const p = new Portfolio();
     p.add("THYAO", { shares: 10, cost: 200 });
     p.add("GARAN", { shares: 20, cost: 50 });
     expect(p.cost).toBe(10 * 200 + 20 * 50);
-  });
-
-  test("Portfolio pnl", async () => {
-    const p = new Portfolio();
-    p.add("THYAO", { shares: 10, cost: 200 });
-    const pnl = await p.pnl;
-    expect(typeof pnl).toBe("number");
-  });
-
-  test("Portfolio pnlPct", async () => {
-    const p = new Portfolio();
-    p.add("THYAO", { shares: 10, cost: 200 });
-    const pct = await p.pnlPct;
-    expect(typeof pct).toBe("number");
-  });
-
-  test("Portfolio weights", async () => {
-    const p = new Portfolio();
-    p.add("THYAO", { shares: 10, cost: 200 });
-    const weights = await p.weights;
-    expect(typeof weights).toBe("object");
-  });
-
-  test("Portfolio holdingsDetail", async () => {
-    const p = new Portfolio();
-    p.add("THYAO", { shares: 10, cost: 200 });
-    const detail = await p.holdingsDetail();
-    expect(Array.isArray(detail)).toBe(true);
-  });
-
-  test("Portfolio history", async () => {
-    const p = new Portfolio();
-    p.add("THYAO", { shares: 10, cost: 200 });
-    const history = await p.history("1mo");
-    expect(Array.isArray(history)).toBe(true);
-  });
-
-  test("Portfolio performance", async () => {
-    const p = new Portfolio();
-    p.add("THYAO", { shares: 10, cost: 200 });
-    const perf = await p.performance();
-    expect(perf).toHaveProperty("totalReturn");
-    expect(perf).toHaveProperty("annualizedReturn");
-  });
-
-  test("Portfolio riskMetrics", async () => {
-    const p = new Portfolio();
-    p.add("THYAO", { shares: 10, cost: 200 });
-    const metrics = await p.riskMetrics("1mo");
-    expect(metrics).toHaveProperty("sharpeRatio");
-    expect(metrics).toHaveProperty("sortinoRatio");
-  });
-
-  test("Portfolio riskMetrics with max period", async () => {
-    const p = new Portfolio();
-    p.add("THYAO", { shares: 10, cost: 200 });
-    const metrics = await p.riskMetrics("max");
-    expect(metrics).toBeDefined();
-  });
-
-  test("Portfolio sharpeRatio", async () => {
-    const p = new Portfolio();
-    p.add("THYAO", { shares: 10, cost: 200 });
-    const sharpe = await p.sharpeRatio("1mo");
-    expect(typeof sharpe).toBe("number");
-  });
-
-  test("Portfolio sortinoRatio", async () => {
-    const p = new Portfolio();
-    p.add("THYAO", { shares: 10, cost: 200 });
-    const sortino = await p.sortinoRatio("1mo");
-    expect(typeof sortino).toBe("number");
-  });
-
-  test("Portfolio beta", async () => {
-    const p = new Portfolio();
-    p.add("THYAO", { shares: 10, cost: 200 });
-    const beta = await p.beta(undefined, "1mo");
-    expect(typeof beta).toBe("number");
-  });
-
-  test("Portfolio beta with custom benchmark", async () => {
-    const p = new Portfolio();
-    p.add("THYAO", { shares: 10, cost: 200 });
-    const beta = await p.beta("XU030", "1mo");
-    expect(typeof beta).toBe("number");
-  });
-
-  test("Portfolio correlationMatrix", async () => {
-    const p = new Portfolio();
-    p.add("THYAO", { shares: 10, cost: 200 });
-    p.add("GARAN", { shares: 20, cost: 50 });
-    const matrix = await p.correlationMatrix("1mo");
-    expect(typeof matrix).toBe("object");
   });
 
   test("Portfolio fromDict", () => {
@@ -295,21 +194,7 @@ describe("Portfolio Module", () => {
       cryptoSpy.mockRestore();
     }
   }, 120000);
-  test("Portfolio - every last branch", async () => {
-    const p = new Portfolio();
-    p.add("THYAO", { shares: 10, cost: 200, assetType: "stock" });
-    p.add("USD", { shares: 1000, cost: 30, assetType: "fx" });
-
-    p.update("THYAO", { shares: 15 });
-    p.remove("THYAO");
-    p.add("THYAO", { shares: 10, cost: 200 }); // Redetect type
-
-    // These call external APIs, but we expect them to resolve or throw manageable errors
-    // We are testing the "glue" code in Portfolio class
-    await p.performance().catch(() => ({}));
-    await p.riskMetrics("max").catch(() => ({}));
-    await p.history("1mo").catch(() => []);
-
+  test("Portfolio empty performance and weights", async () => {
     const pEmpty = new Portfolio();
     await pEmpty.performance();
     await pEmpty.weights;
@@ -467,11 +352,18 @@ describe("Portfolio Module", () => {
   });
 
   test("Portfolio pnlPct with zero cost", async () => {
-    const p = new Portfolio();
-    p.add("FREE", { shares: 100, assetType: "stock" });
-    // cost is 0 (no costPerShare set)
-    const pct = await p.pnlPct;
-    expect(pct).toBe(0);
+    const fiSpy = jest
+      .spyOn(Ticker.prototype, "fastInfo", "get")
+      .mockReturnValue({ lastPrice: Promise.resolve(50) } as unknown as FastInfo);
+    try {
+      const p = new Portfolio();
+      p.add("FREE", { shares: 100, assetType: "stock" });
+      // cost is 0 (no costPerShare set)
+      const pct = await p.pnlPct;
+      expect(pct).toBe(0);
+    } finally {
+      fiSpy.mockRestore();
+    }
   });
 
   test("Portfolio full coverage (assets & catches)", async () => {
@@ -487,6 +379,11 @@ describe("Portfolio Module", () => {
       return { lastPrice: Promise.resolve(100) } as unknown as FastInfo;
     });
 
+    const tickerHistSpy = jest.spyOn(Ticker.prototype, "history").mockImplementation(async function (this: Ticker) {
+      if (this.symbol === "ERR") throw new Error("Mock history error");
+      return [{ date: new Date("2024-10-10"), open: 100, high: 101, low: 99, close: 100, volume: 1000 }];
+    });
+
     const fundInfoSpy = jest.spyOn(Fund.prototype, "info", "get").mockImplementation(function (this: Fund) {
       return Promise.resolve({ price: 10 } as unknown as FundDetail);
     });
@@ -499,9 +396,17 @@ describe("Portfolio Module", () => {
       return Promise.resolve({ last: 30 } as unknown as CurrentData);
     });
 
+    const fxHistSpy = jest.spyOn(FX.prototype, "history").mockResolvedValue([
+      { date: new Date("2024-10-10"), open: 30, high: 31, low: 29, close: 30, volume: 0 },
+    ]);
+
     const cryptoCurrentSpy = jest.spyOn(Crypto.prototype, "current", "get").mockImplementation(function (this: Crypto) {
       return Promise.resolve({ last: 50000 } as unknown as CurrentData);
     });
+
+    const cryptoHistSpy = jest.spyOn(Crypto.prototype, "history").mockResolvedValue([
+      { date: new Date("2024-10-10"), open: 50000, high: 51000, low: 49000, close: 50000, volume: 10 },
+    ]);
 
     try {
       // 1. calculateTotalValue & pnl (hits 99-100, 106)
@@ -524,15 +429,18 @@ describe("Portfolio Module", () => {
       
       // 5. riskMetrics (hits 471) -> tests < 20 points early return
       jest.spyOn(p, "history").mockResolvedValueOnce([{ date: new Date(), value: 100, dailyReturn: 0 }]); // Only 1 point
-      const rm = await p.riskMetrics();
+      const rm = await p.riskMetrics("1y", 0.3);
       expect(rm.annualizedVolatility).toBeNaN();
 
     } finally {
       fiSpy.mockRestore();
+      tickerHistSpy.mockRestore();
       fundInfoSpy.mockRestore();
       fundHistSpy.mockRestore();
       fxCurrentSpy.mockRestore();
+      fxHistSpy.mockRestore();
       cryptoCurrentSpy.mockRestore();
+      cryptoHistSpy.mockRestore();
     }
   });
 });

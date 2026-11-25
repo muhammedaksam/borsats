@@ -1,5 +1,5 @@
 import { allIndices, index, indices } from "~/bist-index";
-import { resilientTest } from "./helpers/network-utils";
+import { resilientTest } from "../helpers/network-utils";
 
 describe("BIST Index Wrapper", () => {
   test("indices() should return list of index symbols", async () => {

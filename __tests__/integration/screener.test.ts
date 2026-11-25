@@ -1,0 +1,128 @@
+import {
+  Screener,
+  screenerCriteria,
+  screenStocks,
+  sectors,
+  stockIndices,
+} from "~/screener";
+import { resilientTest } from "../helpers/network-utils";
+
+describe("Screener Module (Integration)", () => {
+  jest.setTimeout(60000);
+
+  test(
+    "Screener run with filters",
+    resilientTest(async () => {
+      const s = new Screener();
+      await s.addFilter("pe", 0, 20);
+      const results = await s.run();
+      expect(Array.isArray(results)).toBe(true);
+    }),
+  );
+
+  test(
+    "Screener run without filters",
+    resilientTest(async () => {
+      const s = new Screener();
+      const results = await s.run();
+      expect(Array.isArray(results)).toBe(true);
+    }),
+  );
+
+  test(
+    "screenStocks function basic",
+    resilientTest(async () => {
+      const results = await screenStocks({});
+      expect(Array.isArray(results)).toBe(true);
+    }),
+  );
+
+  test(
+    "screenStocks with sector",
+    resilientTest(async () => {
+      const results = await screenStocks({ sector: "BANKA" });
+      expect(Array.isArray(results)).toBe(true);
+    }),
+  );
+
+  test(
+    "screenStocks with index",
+    resilientTest(async () => {
+      const results = await screenStocks({ index: "XU030" });
+      expect(Array.isArray(results)).toBe(true);
+    }),
+  );
+
+  test(
+    "screenStocks with recommendation",
+    resilientTest(async () => {
+      const results = await screenStocks({ recommendation: "BUY" });
+      expect(Array.isArray(results)).toBe(true);
+    }),
+  );
+
+  test(
+    "screenStocks with market_cap filters",
+    resilientTest(async () => {
+      const results = await screenStocks({
+        market_cap_min: 100,
+        market_cap_max: 5000,
+      });
+      expect(Array.isArray(results)).toBe(true);
+    }),
+  );
+
+  test(
+    "screenStocks with pe filters",
+    resilientTest(async () => {
+      const results = await screenStocks({ pe_min: 0, pe_max: 20 });
+      expect(Array.isArray(results)).toBe(true);
+    }),
+  );
+
+  test(
+    "screenStocks with dividend_yield filters",
+    resilientTest(async () => {
+      const results = await screenStocks({
+        dividend_yield_min: 1,
+        dividend_yield_max: 10,
+      });
+      expect(Array.isArray(results)).toBe(true);
+    }),
+  );
+
+  test(
+    "screenStocks with arbitrary _min filters",
+    resilientTest(async () => {
+      const results = await screenStocks({
+        roe_min: 10,
+        roe_max: 50,
+      });
+      expect(Array.isArray(results)).toBe(true);
+    }),
+  );
+
+  test(
+    "screenerCriteria function",
+    resilientTest(async () => {
+      const criteria = await screenerCriteria();
+      expect(Array.isArray(criteria)).toBe(true);
+    }),
+  );
+
+  test(
+    "sectors function",
+    resilientTest(async () => {
+      const sectorList = await sectors();
+      expect(Array.isArray(sectorList)).toBe(true);
+    }),
+  );
+
+  test(
+    "stockIndices function",
+    resilientTest(async () => {
+      const indices = await stockIndices();
+      expect(Array.isArray(indices)).toBe(true);
+    }),
+  );
+});

@@ -1,5 +1,5 @@
 import { Crypto, cryptoList } from "~/crypto";
-import { resilientTest } from "./helpers/network-utils";
+import { resilientTest } from "../helpers/network-utils";
 
 describe("Crypto", () => {
   const coin = new Crypto("BTCTRY");

@@ -276,6 +276,7 @@ describe("borsapy v0.11.0 Parity Extensions", () => {
 
   test("screenStocks supports dynamic *_max-only filters", async () => {
     const sp = getScreenerProvider();
+    jest.spyOn(sp, "getCriteria").mockResolvedValueOnce([]);
     const screenSpy = jest.spyOn(sp, "screen").mockResolvedValueOnce([]);
 
     await screenStocks({ foreign_ratio_max: 40 });

@@ -5,6 +5,7 @@ import { BaseProvider } from "~/providers/base";
 import { APIError, RateLimitError } from "~/exceptions";
 import { TVScreenerProvider, getTVScreenerProvider } from "~/providers/tradingview-screener-native";
 import { HedefFiyatProvider } from "~/providers/hedeffiyat";
+import { Ticker } from "~/ticker";
 
 // Concrete subclass for testing BaseProvider
 class TestProvider extends BaseProvider {
@@ -118,16 +119,31 @@ describe("TVScreenerProvider Coverage", () => {
   });
 
   test("scan with mixed API and local conditions", async () => {
-    // Mock the request method
-    jest.spyOn(screener as any, "request").mockResolvedValue({
+    // Mock the request method and Ticker.history so local calc runs offline
+    const reqSpy = jest.spyOn(screener as any, "request").mockResolvedValue({
       data: [{ s: "BIST:THYAO", d: ["THYAO", 100, 2, 500000, 1000000] }],
     });
-    const results = await screener.scan({
-      symbols: ["THYAO"],
-      conditions: ["close > 0", "supertrend > 0"],
-      interval: "1d",
-    });
-    expect(Array.isArray(results)).toBe(true);
+    const histSpy = jest.spyOn(Ticker.prototype, "history").mockResolvedValue(
+      Array.from({ length: 30 }, (_, i) => ({
+        date: new Date(Date.UTC(2024, 0, i + 1)),
+        open: 95 + i,
+        high: 105 + i,
+        low: 90 + i,
+        close: 100 + i,
+        volume: 1000000,
+      })),
+    );
+    try {
+      const results = await screener.scan({
+        symbols: ["THYAO"],
+        conditions: ["close > 0", "supertrend > 0"],
+        interval: "1d",
+      });
+      expect(Array.isArray(results)).toBe(true);
+    } finally {
+      reqSpy.mockRestore();
+      histSpy.mockRestore();
+    }
   });
 
   test("scanAPI processes results correctly", async () => {

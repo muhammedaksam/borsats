@@ -1,5 +1,5 @@
 import { Inflation } from "~/inflation";
-import { resilientTest } from "./helpers/network-utils";
+import { resilientTest } from "../helpers/network-utils";
 
 describe("Inflation Module", () => {
   jest.setTimeout(30000);
