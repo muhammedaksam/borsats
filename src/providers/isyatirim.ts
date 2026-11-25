@@ -957,6 +957,78 @@ export class IsYatirimProvider extends BaseProvider {
     return records.sort((a, b) => b.date.getTime() - a.date.getTime());
   }
 
+  /**
+   * Get analyst recommendation and target price from İş Yatırım (ONERI / HEDEF_FIYAT / GETIRI_POT).
+   */
+  async getRecommendations(symbol: string): Promise<{
+    recommendation: string | null;
+    target_price: number | null;
+    upside_potential: number | null;
+  }> {
+    const cleanSymbol = symbol
+      .toUpperCase()
+      .replace(".IS", "")
+      .replace(".E", "");
+    const cacheKey = `isyatirim:recommendations:${cleanSymbol}`;
+    const cached = this.cache.get(cacheKey) as
+      | {
+          recommendation: string | null;
+          target_price: number | null;
+          upside_potential: number | null;
+        }
+      | undefined;
+    if (cached) return cached;
+
+    const empty = {
+      recommendation: null,
+      target_price: null,
+      upside_potential: null,
+    };
+
+    let data: Record<string, unknown>;
+    try {
+      data = await this._fetchSermayeData(cleanSymbol);
+    } catch {
+      return empty;
+    }
+
+    const items = this._parseSermayeResponse(data);
+    const result: {
+      recommendation: string | null;
+      target_price: number | null;
+      upside_potential: number | null;
+    } = { ...empty };
+
+    for (const item of items) {
+      const oneri = item.ONERI;
+      const hedefFiyat = item.HEDEF_FIYAT;
+      const getiriPot = item.GETIRI_POT;
+
+      if (typeof oneri === "string" && oneri.trim()) {
+        result.recommendation = oneri.trim();
+      }
+      if (
+        hedefFiyat !== null &&
+        hedefFiyat !== undefined &&
+        hedefFiyat !== ""
+      ) {
+        const val = Number(hedefFiyat);
+        if (!isNaN(val)) result.target_price = Math.round(val * 100) / 100;
+      }
+      if (getiriPot !== null && getiriPot !== undefined && getiriPot !== "") {
+        const val = Number(getiriPot);
+        if (!isNaN(val)) result.upside_potential = Math.round(val * 100) / 100;
+      }
+
+      if (result.recommendation !== null || result.target_price !== null) {
+        break;
+      }
+    }
+
+    this.cache.set(cacheKey, result, TTL.COMPANY_INFO);
+    return result;
+  }
+
   private _getPeriods(
     currentYear: number,
     quarterly: boolean,

@@ -12,26 +12,13 @@ import {
   getTradingViewETFProvider,
 } from "~/providers/tradingview-etf";
 import { getScannerProvider, TASignals } from "~/providers/tradingview-scanner";
+import { TechnicalAnalyzer, TechnicalMixin } from "~/technical";
 import {
-  calculateADX,
-  calculateATR,
-  calculateBollingerBands,
-  calculateDEMA,
-  calculateEMA,
-  calculateHHV,
-  calculateLLV,
-  calculateMACD,
-  calculateMOM,
-  calculateOBV,
-  calculateROC,
-  calculateRSI,
-  calculateSMA,
-  calculateStochastic,
-  calculateTEMA,
-  calculateVWAP,
-  calculateWMA,
-  TechnicalAnalyzer,
-} from "~/technical";
+  buildStockQuery,
+  searchTweets,
+  Tweet,
+  TwitterSearchOptions,
+} from "~/twitter";
 import {
   BalanceSheet,
   CashFlowStatement,
@@ -240,6 +227,9 @@ export class FastInfo {
   get exchange(): Promise<string> {
     return this.get("exchange") as Promise<string>;
   }
+  get timezone(): Promise<string> {
+    return this.get("timezone") as Promise<string>;
+  }
   get lastPrice(): Promise<number> {
     return this.get("lastPrice") as Promise<number>;
   }
@@ -258,8 +248,14 @@ export class FastInfo {
   get volume(): Promise<number> {
     return this.get("volume") as Promise<number>;
   }
+  get amount(): Promise<number | undefined> {
+    return this.get("amount") as Promise<number | undefined>;
+  }
   get marketCap(): Promise<number | undefined> {
     return this.get("marketCap") as Promise<number | undefined>;
+  }
+  get shares(): Promise<number | undefined> {
+    return this.get("shares") as Promise<number | undefined>;
   }
   get peRatio(): Promise<number | undefined> {
     return this.get("peRatio") as Promise<number | undefined>;
@@ -278,6 +274,12 @@ export class FastInfo {
   }
   get yearLow(): Promise<number | undefined> {
     return this.get("yearLow") as Promise<number | undefined>;
+  }
+  get freeFloat(): Promise<number | undefined> {
+    return this.get("freeFloat") as Promise<number | undefined>;
+  }
+  get foreignRatio(): Promise<number | undefined> {
+    return this.get("foreignRatio") as Promise<number | undefined>;
   }
 
   /**
@@ -321,13 +323,21 @@ export class FastInfo {
  * Ticker class for BIST stock data
  * Provides comprehensive interface for Turkish stocks
  */
-export class Ticker {
+export class Ticker extends TechnicalMixin {
   public readonly symbol: string;
   private _fastInfo: FastInfo;
 
   constructor(symbol: string) {
+    super();
     this.symbol = cleanSymbol(symbol);
     this._fastInfo = new FastInfo(this);
+  }
+
+  protected async _getTechnicalHistory(
+    period: Period = "1y",
+    interval: Interval = "1d",
+  ): Promise<OHLCVData[]> {
+    return this.history({ period, interval });
   }
 
   /**
@@ -796,6 +806,35 @@ export class Ticker {
   }
 
   /**
+   * Analyst Price Targets (alias matching borsapy's `analyst_price_targets`)
+   */
+  get analystPriceTargets(): Promise<PriceTarget | null> {
+    return this.priceTarget;
+  }
+
+  /**
+   * Analyst recommendation and target price from İş Yatırım (AL/TUT/SAT)
+   */
+  get recommendations(): Promise<{
+    recommendation: string | null;
+    target_price: number | null;
+    upside_potential: number | null;
+  }> {
+    return getIsYatirimProvider().getRecommendations(this.symbol);
+  }
+
+  /**
+   * Search Twitter/X for tweets related to this BIST stock.
+   */
+  async tweets(
+    options: TwitterSearchOptions & { query?: string } = {},
+  ): Promise<Tweet[]> {
+    const { query, ...searchOpts } = options;
+    const q = query || (await buildStockQuery(this.symbol));
+    return searchTweets(q, searchOpts);
+  }
+
+  /**
    * ISIN code
    */
   get isin(): Promise<string> {
@@ -853,151 +892,6 @@ export class Ticker {
     }
 
     return result;
-  }
-
-  async rsi(period: Period = "3mo", rsiPeriod = 14): Promise<number> {
-    const hist = await this.history({ period });
-    if (hist.length === 0) return NaN;
-    const series = calculateRSI(hist, rsiPeriod);
-    return series[series.length - 1];
-  }
-
-  async sma(period: Period = "3mo", smaPeriod = 20): Promise<number> {
-    const hist = await this.history({ period });
-    if (hist.length === 0) return NaN;
-    const series = calculateSMA(hist, smaPeriod);
-    return series[series.length - 1];
-  }
-
-  async ema(period: Period = "3mo", emaPeriod = 20): Promise<number> {
-    const hist = await this.history({ period });
-    if (hist.length === 0) return NaN;
-    const series = calculateEMA(hist, emaPeriod);
-    return series[series.length - 1];
-  }
-
-  async macd(
-    period: Period = "3mo",
-    fast = 12,
-    slow = 26,
-    signal = 9,
-  ): Promise<{ macd: number; signal: number; histogram: number }> {
-    const hist = await this.history({ period });
-    if (hist.length === 0) return { macd: NaN, signal: NaN, histogram: NaN };
-    const series = calculateMACD(hist, fast, slow, signal);
-    return series[series.length - 1];
-  }
-
-  async bollingerBands(
-    period: Period = "3mo",
-    bbPeriod = 20,
-    stdDev = 2.0,
-  ): Promise<{ upper: number; middle: number; lower: number }> {
-    const hist = await this.history({ period });
-    if (hist.length === 0) return { upper: NaN, middle: NaN, lower: NaN };
-    const series = calculateBollingerBands(hist, bbPeriod, stdDev);
-    return series[series.length - 1];
-  }
-
-  async atr(period: Period = "3mo", atrPeriod = 14): Promise<number> {
-    const hist = await this.history({ period });
-    if (hist.length === 0) return NaN;
-    const series = calculateATR(hist, atrPeriod);
-    return series[series.length - 1];
-  }
-
-  async stochastic(
-    period: Period = "3mo",
-    kPeriod = 14,
-    dPeriod = 3,
-  ): Promise<{ k: number; d: number }> {
-    const hist = await this.history({ period });
-    if (hist.length === 0) return { k: NaN, d: NaN };
-    const series = calculateStochastic(hist, kPeriod, dPeriod);
-    return series[series.length - 1];
-  }
-
-  async obv(period: Period = "3mo"): Promise<number> {
-    const hist = await this.history({ period });
-    if (hist.length === 0) return NaN;
-    const series = calculateOBV(hist);
-    return series[series.length - 1];
-  }
-
-  async vwap(period: Period = "3mo"): Promise<number> {
-    const hist = await this.history({ period });
-    if (hist.length === 0) return NaN;
-    const series = calculateVWAP(hist);
-    return series[series.length - 1];
-  }
-
-  async adx(period: Period = "3mo", adxPeriod = 14): Promise<number> {
-    const hist = await this.history({ period });
-    if (hist.length === 0) return NaN;
-    const series = calculateADX(hist, adxPeriod);
-    return series[series.length - 1];
-  }
-
-  async hhv(period: Period = "3mo", hhvPeriod = 14): Promise<number> {
-    const hist = await this.history({ period });
-    if (hist.length === 0) return NaN;
-    const series = calculateHHV(hist, hhvPeriod);
-    return series[series.length - 1];
-  }
-
-  async llv(period: Period = "3mo", llvPeriod = 14): Promise<number> {
-    const hist = await this.history({ period });
-    if (hist.length === 0) return NaN;
-    const series = calculateLLV(hist, llvPeriod);
-    return series[series.length - 1];
-  }
-
-  async mom(period: Period = "3mo", momPeriod = 10): Promise<number> {
-    const hist = await this.history({ period });
-    if (hist.length === 0) return NaN;
-    const series = calculateMOM(hist, momPeriod);
-    return series[series.length - 1];
-  }
-
-  async roc(period: Period = "3mo", rocPeriod = 10): Promise<number> {
-    const hist = await this.history({ period });
-    if (hist.length === 0) return NaN;
-    const series = calculateROC(hist, rocPeriod);
-    return series[series.length - 1];
-  }
-
-  async wma(period: Period = "3mo", wmaPeriod = 20): Promise<number> {
-    const hist = await this.history({ period });
-    if (hist.length === 0) return NaN;
-    const series = calculateWMA(hist, wmaPeriod);
-    return series[series.length - 1];
-  }
-
-  async dema(period: Period = "3mo", demaPeriod = 20): Promise<number> {
-    const hist = await this.history({ period });
-    if (hist.length === 0) return NaN;
-    const series = calculateDEMA(hist, demaPeriod);
-    return series[series.length - 1];
-  }
-
-  async tema(period: Period = "3mo", temaPeriod = 20): Promise<number> {
-    const hist = await this.history({ period });
-    if (hist.length === 0) return NaN;
-    const series = calculateTEMA(hist, temaPeriod);
-    return series[series.length - 1];
-  }
-
-  /**
-   * Get Heikin Ashi candlestick data
-   */
-  async heikinAshi(
-    period: Period = "1mo",
-    interval: Interval = "1d",
-  ): Promise<OHLCVData[]> {
-    const { calculateHeikinAshi } = await import("~/charts");
-    const hist = await this.history({ period, interval });
-    if (hist.length === 0) return [];
-    return calculateHeikinAshi(hist);
   }
 
   private calculateStartDate(period: Period, endDate: Date): Date {

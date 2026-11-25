@@ -37,10 +37,15 @@ export async function setTradingViewAuth(options: {
       user: userInfo.user,
     };
   } else if (options.session) {
+    const userInfo = await provider.getUser(
+      options.session,
+      options.sessionSign || "",
+    );
     authCredentials = {
       session: options.session,
-      sessionSign: options.sessionSign,
-      authToken: "unauthorized_user_token",
+      sessionSign: options.sessionSign || "",
+      authToken: userInfo.authToken || "unauthorized_user_token",
+      user: userInfo.user,
     };
   } else {
     throw new Error("Provide username/password or session/sessionSign");
@@ -175,16 +180,109 @@ export class TradingViewProvider extends BaseProvider {
         );
       }
 
+      let authToken: string | undefined = response.data.user?.auth_token;
+      let user: Record<string, unknown> = response.data.user || {};
+
+      if (!authToken) {
+        try {
+          const fetched = await this.getUser(session, sessionSign);
+          authToken = fetched.authToken;
+          user = { ...user, ...fetched.user };
+        } catch {
+          // Fall back to unauthorized token if profile fetch fails
+        }
+      }
+
       return {
         session,
         sessionSign,
-        authToken: response.data.user?.auth_token || "unauthorized_user_token",
-        user: response.data.user || {},
+        authToken: authToken || "unauthorized_user_token",
+        user,
       };
     } catch (e) {
       if (e instanceof AuthenticationError) throw e;
       throw new AuthenticationError(
         `Login request failed: ${(e as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * Validate existing TradingView session cookies and extract user info & auth_token.
+   */
+  async getUser(
+    session: string,
+    signature: string = "",
+  ): Promise<{
+    id?: number;
+    username?: string;
+    authToken: string;
+    session: string;
+    sessionSign: string;
+    user: Record<string, unknown>;
+  }> {
+    const url = "https://www.tradingview.com/";
+    const cookieHeader = signature
+      ? `sessionid=${session}; sessionid_sign=${signature}`
+      : `sessionid=${session}`;
+
+    const headers = {
+      "User-Agent": this.getUserAgent(),
+      Cookie: cookieHeader,
+    };
+
+    try {
+      interface ProviderWithClient {
+        client: AxiosInstance;
+      }
+      const client = (this as unknown as ProviderWithClient).client;
+      const response = await client.get<string>(url, {
+        headers,
+        maxRedirects: 5,
+      });
+
+      const html =
+        typeof response.data === "string"
+          ? response.data
+          : JSON.stringify(response.data ?? "");
+
+      if (!html.includes("auth_token") && !html.includes('"id":')) {
+        throw new AuthenticationError(
+          "Invalid or expired session. Please login again.",
+        );
+      }
+
+      const authMatch = html.match(/"auth_token"\s*:\s*"([^"]+)"/);
+      const idMatch = html.match(/"id"\s*:\s*(\d+)/);
+      const userMatch = html.match(/"username"\s*:\s*"([^"]+)"/);
+
+      const authToken = authMatch?.[1];
+      if (!authToken) {
+        throw new AuthenticationError(
+          "Invalid or expired session: auth_token not found.",
+        );
+      }
+
+      const user: Record<string, unknown> = {
+        auth_token: authToken,
+      };
+      const id = idMatch ? parseInt(idMatch[1], 10) : undefined;
+      const username = userMatch?.[1];
+      if (id !== undefined) user.id = id;
+      if (username) user.username = username;
+
+      return {
+        id,
+        username,
+        authToken,
+        session,
+        sessionSign: signature,
+        user,
+      };
+    } catch (e) {
+      if (e instanceof AuthenticationError) throw e;
+      throw new AuthenticationError(
+        `Failed to validate session: ${(e as Error).message}`,
       );
     }
   }
@@ -501,6 +599,16 @@ export class TradingViewProvider extends BaseProvider {
     symbol: string,
   ): Promise<CurrentData> {
     return this.executeWithRetry(() => this._fetchQuote(exchange, symbol));
+  }
+
+  /**
+   * Convenience alias matching borsapy's `get_quote(symbol, exchange="BIST")`.
+   */
+  async getQuote(
+    symbol: string,
+    exchange: string = "BIST",
+  ): Promise<CurrentData> {
+    return this.getCurrentQuote(exchange, symbol);
   }
 
   private async _fetchQuote(

@@ -170,6 +170,55 @@ export class StudySession {
     }
   }
 
+  /**
+   * Handle study_loading protocol event
+   */
+  handleStudyLoading(studyId: string): void {
+    const map = this._studyIdMap.get(studyId);
+    if (!map) return;
+    this._stream.emit("study_loading", {
+      studyId,
+      symbol: map.symbol,
+      interval: map.interval,
+      indicator: map.indicator,
+    });
+  }
+
+  /**
+   * Handle study_completed protocol event
+   */
+  handleStudyCompleted(studyId: string): void {
+    const map = this._studyIdMap.get(studyId);
+    if (!map) return;
+    const study = this._studies
+      .get(map.symbol)
+      ?.get(map.interval)
+      ?.get(map.indicator);
+    if (study) {
+      study.ready = true;
+    }
+    this._stream.emit("study_completed", {
+      studyId,
+      symbol: map.symbol,
+      interval: map.interval,
+      indicator: map.indicator,
+    });
+  }
+
+  /**
+   * Handle study_error protocol event
+   */
+  handleStudyError(studyId: string, error: string): void {
+    const map = this._studyIdMap.get(studyId);
+    this._stream.emit("study_error", {
+      studyId,
+      symbol: map?.symbol,
+      interval: map?.interval,
+      indicator: map?.indicator,
+      error,
+    });
+  }
+
   private _buildTvInputs(study: PineStudy): Record<string, TvInputType> {
     const inputs: Record<string, TvInputType> = {
       pineId: study.indicatorId,
@@ -379,12 +428,16 @@ interface ChartSubscription {
  * Persistent WebSocket streaming for real-time data
  */
 export class TradingViewStream extends EventEmitter {
-  private static readonly WS_URL =
+  public static readonly WS_URL =
     "wss://data.tradingview.com/socket.io/websocket";
-  private static readonly ORIGIN = "https://www.tradingview.com";
+  public static readonly ORIGIN = "https://www.tradingview.com";
+  public static readonly MAX_RECONNECT_ATTEMPTS = 10;
+  public static readonly MAX_RECONNECT_DELAY = 30;
+  public static readonly HEARTBEAT_INTERVAL = 30;
 
   private ws: WebSocket | null = null;
-  private isConnected = false;
+  private _isConnected = false;
+  private _authToken: string | undefined;
   private _quoteSession: string;
   private _chartSession: string;
   private _subscribedSymbols: Set<string> = new Set();
@@ -393,14 +446,28 @@ export class TradingViewStream extends EventEmitter {
     new Map();
   private _candleCache: Map<string, StreamCandle[]> = new Map();
   private _quoteCache: Map<string, Quote> = new Map();
+  private _quoteCallbacks: Map<
+    string,
+    Map<(quote: Quote) => void, (quote: Quote) => void>
+  > = new Map();
+  private _candleCallbacks: Map<
+    string,
+    Map<
+      (candle: StreamCandle) => void,
+      (data: { symbol: string; interval: string; candle: StreamCandle }) => void
+    >
+  > = new Map();
   private _seriesCounter = 0;
   private _shouldReconnect = true;
   private _reconnecting = false;
+  private _reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private _heartbeatCounter = 0;
 
   public readonly studies: StudySession;
 
-  constructor() {
+  constructor(authToken?: string) {
     super();
+    this._authToken = authToken;
     this._quoteSession = "qs_" + this._generateId();
     this._chartSession = "cs_" + this._generateId();
     this.studies = new StudySession(this);
@@ -410,19 +477,46 @@ export class TradingViewStream extends EventEmitter {
     return this._chartSession;
   }
 
-  async connect(): Promise<void> {
-    if (this.isConnected) return;
+  get isConnected(): boolean {
+    return this._isConnected;
+  }
+
+  get subscribedSymbols(): string[] {
+    return Array.from(this._subscribedSymbols);
+  }
+
+  get chartSubscriptions(): Array<{ symbol: string; interval: string }> {
+    return Array.from(this._chartSubscriptions.values()).map((sub) => ({
+      symbol: sub.symbol,
+      interval: sub.interval,
+    }));
+  }
+
+  async connect(timeout: number = 10000): Promise<void> {
+    if (this._isConnected) return;
+
+    this._shouldReconnect = true;
 
     return new Promise((resolve, reject) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          reject(new Error(`Connection timeout after ${timeout}ms`));
+        }
+      }, timeout);
+      timer.unref?.();
+
       this.ws = new WebSocket(TradingViewStream.WS_URL, {
         headers: { Origin: TradingViewStream.ORIGIN },
       });
 
       this.ws.on("open", () => {
-        this.isConnected = true;
+        clearTimeout(timer);
+        this._isConnected = true;
         const auth = getTradingViewAuth();
         this.send("set_auth_token", [
-          auth?.authToken || "unauthorized_user_token",
+          this._authToken || auth?.authToken || "unauthorized_user_token",
         ]);
 
         // Setup sessions
@@ -443,28 +537,43 @@ export class TradingViewStream extends EventEmitter {
 
         this.send("chart_create_session", [this._chartSession, ""]);
 
-        resolve();
+        if (!settled) {
+          settled = true;
+          resolve();
+        }
       });
 
       this.ws.on("message", (data) => this._parseMessage(data.toString()));
       this.ws.on("error", (err) => {
+        clearTimeout(timer);
         this.emit("error", err);
-        reject(err);
+        if (!settled) {
+          settled = true;
+          reject(err);
+        }
       });
       this.ws.on("close", () => {
-        this.isConnected = false;
+        clearTimeout(timer);
+        this._isConnected = false;
         this.emit("close");
+        if (this._shouldReconnect && !this._reconnecting) {
+          void this._reconnect();
+        }
       });
     });
   }
 
   disconnect() {
     this._shouldReconnect = false;
+    if (this._reconnectTimer) {
+      clearTimeout(this._reconnectTimer);
+      this._reconnectTimer = null;
+    }
     if (this.ws) {
       this.ws.close();
       this.ws = null;
     }
-    this.isConnected = false;
+    this._isConnected = false;
   }
 
   subscribe(symbol: string, exchange: string = "BIST") {
@@ -488,6 +597,17 @@ export class TradingViewStream extends EventEmitter {
   getQuote(symbol: string, exchange: string = "BIST"): Quote | null {
     const s = `${exchange}:${symbol.toUpperCase()}`;
     return this._quoteCache.get(s) || null;
+  }
+
+  /**
+   * Get all cached quotes as a symbol -> Quote map
+   */
+  getAllQuotes(): Record<string, Quote> {
+    const result: Record<string, Quote> = {};
+    this._quoteCache.forEach((quote, key) => {
+      result[key] = quote;
+    });
+    return result;
   }
 
   /**
@@ -700,9 +820,30 @@ export class TradingViewStream extends EventEmitter {
     exchange: string = "BIST",
   ) {
     const s = `${exchange}:${symbol.toUpperCase()}`;
-    this.on("quote", (quote: Quote) => {
+    const wrapper = (quote: Quote) => {
       if (quote.symbol === s) callback(quote);
-    });
+    };
+    if (!this._quoteCallbacks.has(s)) {
+      this._quoteCallbacks.set(s, new Map());
+    }
+    this._quoteCallbacks.get(s)!.set(callback, wrapper);
+    this.on("quote", wrapper);
+  }
+
+  /**
+   * Remove a previously registered quote callback
+   */
+  removeCallback(
+    symbol: string,
+    callback: (quote: Quote) => void,
+    exchange: string = "BIST",
+  ): void {
+    const s = `${exchange}:${symbol.toUpperCase()}`;
+    const wrapper = this._quoteCallbacks.get(s)?.get(callback);
+    if (wrapper) {
+      this.off("quote", wrapper);
+      this._quoteCallbacks.get(s)!.delete(callback);
+    }
   }
 
   /**
@@ -715,18 +856,145 @@ export class TradingViewStream extends EventEmitter {
     exchange: string = "BIST",
   ) {
     const s = `${exchange}:${symbol.toUpperCase()}`;
-    this.on(
-      "candle",
-      (data: { symbol: string; interval: string; candle: StreamCandle }) => {
-        if (data.symbol === s && data.interval === interval) {
-          callback(data.candle);
+    const key = `${s}:${interval}`;
+    const wrapper = (data: {
+      symbol: string;
+      interval: string;
+      candle: StreamCandle;
+    }) => {
+      if (data.symbol === s && data.interval === interval) {
+        callback(data.candle);
+      }
+    };
+    if (!this._candleCallbacks.has(key)) {
+      this._candleCallbacks.set(key, new Map());
+    }
+    this._candleCallbacks.get(key)!.set(callback, wrapper);
+    this.on("candle", wrapper);
+  }
+
+  /**
+   * Remove a previously registered candle callback
+   */
+  removeCandleCallback(
+    symbol: string,
+    interval: string,
+    callback: (candle: StreamCandle) => void,
+    exchange: string = "BIST",
+  ): void {
+    const s = `${exchange}:${symbol.toUpperCase()}`;
+    const key = `${s}:${interval}`;
+    const wrapper = this._candleCallbacks.get(key)?.get(callback);
+    if (wrapper) {
+      this.off("candle", wrapper);
+      this._candleCallbacks.get(key)!.delete(callback);
+    }
+  }
+
+  // --- Study convenience wrappers (aligned with borsapy TradingViewStream) ---
+
+  addStudy(
+    symbol: string,
+    interval: string,
+    indicator: string,
+    inputs: Record<string, unknown> = {},
+  ): Promise<string> {
+    return this.studies.add(symbol, interval, indicator, inputs);
+  }
+
+  removeStudy(symbol: string, interval: string, indicator: string): void {
+    this.studies.remove(symbol, interval, indicator);
+  }
+
+  getStudy(
+    symbol: string,
+    interval: string,
+    indicator: string,
+  ): Record<string, number> | null {
+    return this.studies.get(symbol, interval, indicator);
+  }
+
+  getStudies(
+    symbol: string,
+    interval: string,
+  ): Record<string, Record<string, number>> {
+    return this.studies.getAll(symbol, interval);
+  }
+
+  onStudy(
+    symbol: string,
+    interval: string,
+    indicator: string,
+    callback: (values: Record<string, number>) => void,
+  ): void {
+    this.studies.onUpdate(symbol, interval, indicator, callback);
+  }
+
+  onAnyStudy(
+    callback: (
+      symbol: string,
+      interval: string,
+      indicator: string,
+      values: Record<string, number>,
+    ) => void,
+  ): void {
+    this.studies.onAnyUpdate(callback);
+  }
+
+  waitForStudy(
+    symbol: string,
+    interval: string,
+    indicator: string,
+    timeout: number = 10000,
+  ): Promise<Record<string, number>> {
+    return this.studies.waitFor(symbol, interval, indicator, timeout);
+  }
+
+  /**
+   * Send a heartbeat ping packet over the active WebSocket.
+   */
+  ping(): void {
+    if (!this.ws || !this._isConnected) return;
+    const hb = `~h~${++this._heartbeatCounter}`;
+    this.ws.send(`~m~${hb.length}~m~${hb}`);
+  }
+
+  /**
+   * Block until the stream disconnects (or optional AbortSignal fires).
+   */
+  wait(signal?: AbortSignal): Promise<void> {
+    if (!this._isConnected && !this._reconnecting) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      const cleanup = () => {
+        this.off("close", onClose);
+        this.off("reconnect_failed", onDone);
+        signal?.removeEventListener("abort", onDone);
+      };
+      const onDone = () => {
+        cleanup();
+        resolve();
+      };
+      const onClose = () => {
+        if (!this._shouldReconnect) {
+          onDone();
         }
-      },
-    );
+      };
+      this.on("close", onClose);
+      this.on("reconnect_failed", onDone);
+      if (signal) {
+        if (signal.aborted) {
+          onDone();
+          return;
+        }
+        signal.addEventListener("abort", onDone, { once: true });
+      }
+    });
   }
 
   send(method: string, params: unknown[]) {
-    if (!this.ws || !this.isConnected) return;
+    if (!this.ws || !this._isConnected) return;
     const msg = JSON.stringify({ m: method, p: params });
     this.ws.send(`~m~${msg.length}~m~${msg}`);
   }
@@ -777,6 +1045,23 @@ export class TradingViewStream extends EventEmitter {
         break;
       case "series_completed":
         // Chart data ready
+        break;
+      case "study_loading":
+        if (Array.isArray(packet.p) && typeof packet.p[1] === "string") {
+          this.studies.handleStudyLoading(packet.p[1]);
+        }
+        break;
+      case "study_completed":
+        if (Array.isArray(packet.p) && typeof packet.p[1] === "string") {
+          this.studies.handleStudyCompleted(packet.p[1]);
+        }
+        break;
+      case "study_error":
+        if (Array.isArray(packet.p) && typeof packet.p[1] === "string") {
+          const errMsg =
+            packet.p.length > 2 ? String(packet.p[2]) : "Unknown study error";
+          this.studies.handleStudyError(packet.p[1], errMsg);
+        }
         break;
     }
   }
@@ -861,7 +1146,14 @@ export class TradingViewStream extends EventEmitter {
     for (let i = 0; i < delays.length; i++) {
       if (!this._shouldReconnect) break;
 
-      await new Promise((r) => setTimeout(r, delays[i]));
+      await new Promise<void>((r) => {
+        this._reconnectTimer = setTimeout(() => {
+          this._reconnectTimer = null;
+          r();
+        }, delays[i]);
+        this._reconnectTimer.unref?.();
+      });
+      if (!this._shouldReconnect) break;
 
       try {
         await this.connect();
@@ -916,6 +1208,6 @@ const CHART_TIMEFRAMES: Record<string, string> = {
 /**
  * Factory helper to create a new TradingViewStream instance (aligned with borsapy's `create_stream`).
  */
-export function createStream(): TradingViewStream {
-  return new TradingViewStream();
+export function createStream(authToken?: string): TradingViewStream {
+  return new TradingViewStream(authToken);
 }

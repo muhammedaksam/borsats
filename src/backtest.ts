@@ -39,7 +39,12 @@ export interface Trade {
 
 export type BacktestSummaryData = Omit<
   BacktestResult,
-  "equityCurve" | "drawdownCurve" | "buyHoldCurve" | "toObject" | "summary"
+  | "equityCurve"
+  | "drawdownCurve"
+  | "buyHoldCurve"
+  | "toObject"
+  | "toDict"
+  | "summary"
 >;
 
 export interface BacktestResult {
@@ -80,6 +85,7 @@ export interface BacktestResult {
 
   // Methods
   toObject(): BacktestSummaryData;
+  toDict(): BacktestSummaryData;
   summary(): string;
 }
 
@@ -421,10 +427,14 @@ export class BacktestEngine {
           drawdownCurve: _dc,
           buyHoldCurve: _bc,
           toObject: _to,
+          toDict: _td,
           summary: _sm,
           ...data
         } = this as unknown as BacktestResult;
         return data as BacktestSummaryData;
+      },
+      toDict(): BacktestSummaryData {
+        return this.toObject();
       },
       summary() {
         const d = this.toObject();

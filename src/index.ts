@@ -33,11 +33,28 @@ export * from "~/portfolio";
 export { Portfolio } from "~/portfolio";
 
 export * from "~/technical";
-export { TechnicalAnalyzer } from "~/technical";
+export { TechnicalAnalyzer, TechnicalMixin } from "~/technical";
 
 export * from "~/types";
 
 export * from "~/charts";
+
+export * from "~/twitter";
+export {
+  TwitterProvider,
+  getTwitterProvider,
+  TWITTER_PERIOD_DAYS,
+} from "~/providers/twitter";
+
+export {
+  KAPHoldingsProvider,
+  getKAPHoldingsProvider,
+  PORTFOLIO_REPORT_DISCLOSURE_TYPE,
+  OPENROUTER_MODEL,
+  type FundHolding,
+  type FundHoldingRow,
+  type KAPFundDisclosure,
+} from "~/providers/kap-holdings";
 
 export * from "~/providers/pine-facade";
 export * from "~/providers/tradingview-etf";

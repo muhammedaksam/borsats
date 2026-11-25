@@ -5,12 +5,20 @@ import {
 import { getDovizcomProvider } from "~/providers/dovizcom";
 import { getTradingViewProvider } from "~/providers/tradingview";
 import { getScannerProvider, TASignals } from "~/providers/tradingview-scanner";
+import { TechnicalMixin } from "~/technical";
+import {
+  buildFxQuery,
+  searchTweets,
+  Tweet,
+  TwitterSearchOptions,
+} from "~/twitter";
 import {
   BankRate,
   CurrentData,
   Interval,
   MetalInstitutionRate,
   OHLCVData,
+  Period,
 } from "~/types";
 
 const TV_CURRENCY_MAP: Record<string, [string, string]> = {
@@ -33,12 +41,39 @@ const TV_COMMODITY_MAP: Record<string, [string, string]> = {
   WTI: ["TVC", "USOIL"],
 };
 
-export class FX {
+export class FX extends TechnicalMixin {
   private _asset: string;
   private _currentCache: CurrentData | null = null;
 
   constructor(asset: string) {
+    super();
     this._asset = asset;
+  }
+
+  static banks() {
+    return getDovizcomProvider().getBanks();
+  }
+
+  static metalInstitutions() {
+    return getDovizcomProvider().getMetalInstitutions();
+  }
+
+  protected async _getTechnicalHistory(
+    period: Period = "1y",
+    interval: Interval = "1d",
+  ): Promise<OHLCVData[]> {
+    return this.history({ period, interval });
+  }
+
+  /**
+   * Search Twitter/X for tweets related to this FX/commodity asset.
+   */
+  async tweets(
+    options: TwitterSearchOptions & { query?: string } = {},
+  ): Promise<Tweet[]> {
+    const { query, ...searchOpts } = options;
+    const q = query || buildFxQuery(this._asset);
+    return searchTweets(q, searchOpts);
   }
 
   get asset(): string {

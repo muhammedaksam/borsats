@@ -1,4 +1,5 @@
 import { riskFreeRate } from "~/bond";
+import { FundHolding, getKAPHoldingsProvider } from "~/providers/kap-holdings";
 import {
   AllocationItem,
   FundDetail,
@@ -7,8 +8,14 @@ import {
   ScreenFundsOptions,
 } from "~/providers/tefas";
 import { classifyFundTaxCategory, getWithholdingTaxRate } from "~/tax";
-import { TechnicalAnalyzer } from "~/technical";
-import { FundType, OHLCVData } from "~/types";
+import { TechnicalAnalyzer, TechnicalMixin } from "~/technical";
+import {
+  buildFundQuery,
+  searchTweets,
+  Tweet,
+  TwitterSearchOptions,
+} from "~/twitter";
+import { FundType, OHLCVData, Period } from "~/types";
 
 export interface FundRiskMetrics {
   annualizedReturn: number;
@@ -20,15 +27,57 @@ export interface FundRiskMetrics {
   tradingDays: number;
 }
 
-export class Fund {
+export class Fund extends TechnicalMixin {
   private _fundCode: string;
   private _infoCache: FundDetail | null = null;
   private _fundType: FundType | null = null;
   private _detectedFundType: FundType | null = null;
 
   constructor(fundCode: string, fundType: FundType | null = null) {
+    super();
     this._fundCode = fundCode.toUpperCase();
     this._fundType = fundType ? (fundType.toUpperCase() as FundType) : null;
+  }
+
+  protected async _getTechnicalHistory(
+    period: Period = "1y",
+  ): Promise<OHLCVData[]> {
+    const hist = await this.history({ period });
+    return hist.map((h: FundHistoryItem) => ({
+      date: new Date(h.date),
+      open: Number(h.price),
+      high: Number(h.price),
+      low: Number(h.price),
+      close: Number(h.price),
+      volume: 0,
+    }));
+  }
+
+  /**
+   * Get detailed portfolio holdings from KAP PDF disclosures via OpenRouter LLM.
+   */
+  async getHoldings(apiKey: string, period?: string): Promise<FundHolding[]> {
+    return getKAPHoldingsProvider().getHoldings(this._fundCode, apiKey, period);
+  }
+
+  /**
+   * Search Twitter/X for tweets related to this TEFAS fund.
+   */
+  async tweets(
+    options: TwitterSearchOptions & { query?: string } = {},
+  ): Promise<Tweet[]> {
+    const { query, ...searchOpts } = options;
+    let fundName: string | undefined;
+    if (!query) {
+      try {
+        const info = await this.info;
+        fundName = info.name;
+      } catch {
+        // Ignore info errors; search by code only
+      }
+    }
+    const q = query || buildFundQuery(this._fundCode, fundName);
+    return searchTweets(q, searchOpts);
   }
 
   get fundCode(): string {

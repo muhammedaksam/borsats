@@ -29,85 +29,106 @@ import { Interval } from "~/types";
 import { resilientTest } from "./helpers/network-utils";
 
 describe("Coverage Boost Tests", () => {
-  jest.setTimeout(60000);
+  jest.setTimeout(120000);
 
   describe("BIST Index Coverage", () => {
-    test("taSignalsAllTimeframes should handle errors gracefully", async () => {
-      const idx = new Index("INVALID_INDEX");
-      const signals = await idx.taSignalsAllTimeframes();
-      expect(signals["1d"]).toHaveProperty("error");
-    });
+    test(
+      "taSignalsAllTimeframes should handle errors gracefully",
+      resilientTest(async () => {
+        const idx = new Index("INVALID_INDEX");
+        const signals = await idx.taSignalsAllTimeframes();
+        expect(signals["1d"]).toHaveProperty("error");
+      }, 1),
+    );
 
-    test("scan should work with options", async () => {
-      const idx = new Index("XU100");
-      const results = await idx.scan("rsi < 30", { interval: "1h" });
-      expect(Array.isArray(results)).toBe(true);
-    });
+    test(
+      "scan should work with options",
+      resilientTest(async () => {
+        const idx = new Index("XU100");
+        const results = await idx.scan("rsi < 30", { interval: "1h" });
+        expect(Array.isArray(results)).toBe(true);
+      }, 1),
+    );
   });
 
   describe("Backtest Coverage", () => {
-    test("BacktestEngine should handle indicators with periods", async () => {
-      const strategy: StrategyFunc = (
-        candle: Candle,
-        pos: Position,
-        indices: Record<string, number>,
-      ) => {
-        if (indices.rsi_14 < 30) return "BUY";
-        if (indices.rsi_14 > 70) return "SELL";
-        return "HOLD";
-      };
-      const engine = new BacktestEngine("THYAO", strategy, {
-        period: "1mo",
-        indicators: ["rsi_14", "sma_50"],
-      });
-      const result = await engine.run();
-      expect(result.strategyName).toBe("strategy");
-    });
+    test(
+      "BacktestEngine should handle indicators with periods",
+      resilientTest(async () => {
+        const strategy: StrategyFunc = (
+          candle: Candle,
+          pos: Position,
+          indices: Record<string, number>,
+        ) => {
+          if (indices.rsi_14 < 30) return "BUY";
+          if (indices.rsi_14 > 70) return "SELL";
+          return "HOLD";
+        };
+        const engine = new BacktestEngine("THYAO", strategy, {
+          period: "1mo",
+          indicators: ["rsi_14", "sma_50"],
+        });
+        const result = await engine.run();
+        expect(result.strategyName).toBe("strategy");
+      }, 1),
+    );
 
-    test("Backtest summary formatting", async () => {
-      const strategy: StrategyFunc = () => "HOLD";
-      const result = await backtest("THYAO", strategy, { period: "5d" });
-      const summary = result.summary();
-      expect(summary).toContain("BACKTEST RESULTS: THYAO");
-      expect(summary).toContain("Sharpe Ratio:");
-    });
+    test(
+      "Backtest summary formatting",
+      resilientTest(async () => {
+        const strategy: StrategyFunc = () => "HOLD";
+        const result = await backtest("THYAO", strategy, { period: "5d" });
+        const summary = result.summary();
+        expect(summary).toContain("BACKTEST RESULTS: THYAO");
+        expect(summary).toContain("Sharpe Ratio:");
+      }, 1),
+    );
 
-    test("Backtest SELL logic and metrics", async () => {
-      let tradeDone = false;
-      const strategy: StrategyFunc = (candle: Candle, pos: Position) => {
-        if (pos === null && !tradeDone) {
-          tradeDone = true;
-          return "BUY";
-        }
-        if (pos === "long") return "SELL";
-        return "HOLD";
-      };
-      const result = await backtest("THYAO", strategy, {
-        period: "1mo",
-      });
-      expect(result.totalTrades).toBeGreaterThan(0);
-      expect(result.netProfit).toBeDefined();
-    });
+    test(
+      "Backtest SELL logic and metrics",
+      resilientTest(async () => {
+        let tradeDone = false;
+        const strategy: StrategyFunc = (candle: Candle, pos: Position) => {
+          if (pos === null && !tradeDone) {
+            tradeDone = true;
+            return "BUY";
+          }
+          if (pos === "long") return "SELL";
+          return "HOLD";
+        };
+        const result = await backtest("THYAO", strategy, {
+          period: "1mo",
+        });
+        expect(result.totalTrades).toBeGreaterThan(0);
+        expect(result.netProfit).toBeDefined();
+      }, 1),
+    );
   });
 
   describe("FX Coverage", () => {
-    test("FX current and history", async () => {
-      const fx = new FX("USD");
-      const data = await fx.current;
-      expect(data).toHaveProperty("last");
+    test(
+      "FX current and history",
+      resilientTest(async () => {
+        const fx = new FX("USD");
+        const data = await fx.current;
+        expect(data).toHaveProperty("last");
 
-      const hist = await fx.history({ period: "1d", interval: "1h" });
-      expect(Array.isArray(hist)).toBe(true);
-    });
+        const hist = await fx.history({ period: "1d", interval: "1h" });
+        expect(Array.isArray(hist)).toBe(true);
+      }, 1),
+    );
 
-    test("FX TA signals", async () => {
-      const fx = new FX("USD");
-      const signals = await fx.taSignals();
-      expect(signals).toHaveProperty("summary");
+    test(
+      "FX TA signals",
+      resilientTest(async () => {
+        const fx = new FX("USD");
+        const signals = await fx.taSignals();
+        expect(signals).toHaveProperty("summary");
 
-      const all = await fx.taSignalsAllTimeframes();
-      expect(all).toHaveProperty("1d");
-    });
+        const all = await fx.taSignalsAllTimeframes();
+        expect(all).toHaveProperty("1d");
+      }, 1),
+    );
 
     test("banks and metalInstitutions", async () => {
       const b = await banks();
@@ -136,12 +157,15 @@ describe("Coverage Boost Tests", () => {
       expect(bond.maturity).toBe("2Y");
     });
 
-    test("Eurobond getters", async () => {
-      const eb = new Eurobond("US900123AL40");
-      expect(eb.isin).toBe("US900123AL40");
-      const curr = await eb.currency();
-      expect(curr).toBe("USD");
-    });
+    test(
+      "Eurobond getters",
+      resilientTest(async () => {
+        const eb = new Eurobond("US900123AL40");
+        expect(eb.isin).toBe("US900123AL40");
+        const curr = await eb.currency();
+        expect(curr).toBe("USD");
+      }, 1),
+    );
   });
 
   describe("Stream and Scanner Coverage", () => {
@@ -301,11 +325,16 @@ describe("Coverage Boost Tests", () => {
       expect(results).toEqual({});
     });
 
-    test("download method with multiple symbols and grouping", async () => {
-      // Just checking it doesn't crash
-      const results = await download(["THYAO", "ASELS"], { groupBy: "ticker" });
-      expect(results).toBeDefined();
-    });
+    test(
+      "download method with multiple symbols and grouping",
+      resilientTest(async () => {
+        // Just checking it doesn't crash
+        const results = await download(["THYAO", "ASELS"], {
+          groupBy: "ticker",
+        });
+        expect(results).toBeDefined();
+      }, 1),
+    );
   });
 
   describe("TVScreenerProvider Coverage", () => {
@@ -346,21 +375,24 @@ describe("Coverage Boost Tests", () => {
       expect(screener.parseCondition("invalid condition", "1d")).toBeNull();
     });
 
-    test("scan method edge cases", async () => {
-      await expect(
-        screener.scan({ symbols: [], conditions: ["close > 0"] }),
-      ).resolves.toEqual([]);
-      await expect(
-        screener.scan({ symbols: ["THYAO"], conditions: [] }),
-      ).resolves.toEqual([]);
+    test(
+      "scan method edge cases",
+      resilientTest(async () => {
+        await expect(
+          screener.scan({ symbols: [], conditions: ["close > 0"] }),
+        ).resolves.toEqual([]);
+        await expect(
+          screener.scan({ symbols: ["THYAO"], conditions: [] }),
+        ).resolves.toEqual([]);
 
-      // Local only should resolve successfully
-      const localResult = await screener.scan({
-        symbols: ["THYAO"],
-        conditions: ["supertrend > 0"],
-      });
-      expect(Array.isArray(localResult)).toBe(true);
-    });
+        // Local only should resolve successfully
+        const localResult = await screener.scan({
+          symbols: ["THYAO"],
+          conditions: ["supertrend > 0"],
+        });
+        expect(Array.isArray(localResult)).toBe(true);
+      }, 1),
+    );
 
     test("separateConditions logic", () => {
       const sep = screener.separateConditions(["close > 0", "supertrend > 10"]);
@@ -421,9 +453,25 @@ describe("Coverage Boost Tests", () => {
       clearTradingViewAuth();
       await expect(setTradingViewAuth({})).rejects.toThrow();
 
-      await setTradingViewAuth({ session: "fake_session" });
-      // @ts-expect-error accessing private
-      expect(tv.getAuthToken()).toBe("unauthorized_user_token");
+      const getUserSpy = jest.spyOn(tv, "getUser").mockResolvedValueOnce({
+        id: 42,
+        username: "tester",
+        authToken: "real_tv_token",
+        session: "fake_session",
+        sessionSign: "fake_sign",
+        user: { id: 42, username: "tester", auth_token: "real_tv_token" },
+      });
+      try {
+        await setTradingViewAuth({
+          session: "fake_session",
+          sessionSign: "fake_sign",
+        });
+        // @ts-expect-error accessing private
+        expect(tv.getAuthToken()).toBe("real_tv_token");
+      } finally {
+        getUserSpy.mockRestore();
+        clearTradingViewAuth();
+      }
     });
 
     test("calculateBars logic coverage", () => {
@@ -475,20 +523,23 @@ describe("Coverage Boost Tests", () => {
       provider = getSearchProvider();
     });
 
-    test("Search convenience methods", async () => {
-      // These hit the search method with different params
-      const bist = await provider.searchBist("THYAO", 5);
-      expect(Array.isArray(bist)).toBe(true);
+    test(
+      "Search convenience methods",
+      resilientTest(async () => {
+        // These hit the search method with different params
+        const bist = await provider.searchBist("THYAO", 5);
+        expect(Array.isArray(bist)).toBe(true);
 
-      const crypto = await provider.searchCrypto("BTC", 5);
-      expect(Array.isArray(crypto)).toBe(true);
+        const crypto = await provider.searchCrypto("BTC", 5);
+        expect(Array.isArray(crypto)).toBe(true);
 
-      const forex = await provider.searchForex("USDTRY", 5);
-      expect(Array.isArray(forex)).toBe(true);
+        const forex = await provider.searchForex("USDTRY", 5);
+        expect(Array.isArray(forex)).toBe(true);
 
-      const viop = await provider.searchViop("XU030", 5);
-      expect(Array.isArray(viop)).toBe(true);
-    });
+        const viop = await provider.searchViop("XU030", 5);
+        expect(Array.isArray(viop)).toBe(true);
+      }, 1),
+    );
 
     test("monthCodeToName mapping", () => {
       expect(TradingViewSearchProvider.monthCodeToName("F")).toBe("January");
@@ -496,19 +547,25 @@ describe("Coverage Boost Tests", () => {
       expect(TradingViewSearchProvider.monthCodeToName("INVALID")).toBe("");
     });
 
-    test("getVIOPContracts should handle searches", async () => {
-      const contracts = await provider.getVIOPContracts("THYAO");
-      expect(Array.isArray(contracts)).toBe(true);
-    });
+    test(
+      "getVIOPContracts should handle searches",
+      resilientTest(async () => {
+        const contracts = await provider.getVIOPContracts("THYAO");
+        expect(Array.isArray(contracts)).toBe(true);
+      }, 1),
+    );
 
     test("search with empty query should return empty array", async () => {
       const result = await provider.search("   ");
       expect(result).toEqual([]);
     });
 
-    test("search with assetType and exchange mapping", async () => {
-      const result = await provider.search("THYAO", "stock", "bist", 1);
-      expect(Array.isArray(result)).toBe(true);
-    });
+    test(
+      "search with assetType and exchange mapping",
+      resilientTest(async () => {
+        const result = await provider.search("THYAO", "stock", "bist", 1);
+        expect(Array.isArray(result)).toBe(true);
+      }, 1),
+    );
   });
 });

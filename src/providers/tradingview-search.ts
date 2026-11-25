@@ -162,6 +162,26 @@ export class TradingViewSearchProvider extends BaseProvider {
   }
 
   /**
+   * Batch lookup of exact symbols via TradingView search (aligned with borsapy's `get_symbols`).
+   */
+  async getSymbols(
+    symbols: string[],
+  ): Promise<Record<string, SearchResult | null>> {
+    const out: Record<string, SearchResult | null> = {};
+    await Promise.all(
+      symbols.map(async (sym) => {
+        const clean = sym.trim().toUpperCase();
+        if (!clean) return;
+        const hits = await this.search(clean, undefined, undefined, 5);
+        const exact =
+          hits.find((h) => h.symbol.toUpperCase() === clean) || hits[0] || null;
+        out[clean] = exact;
+      }),
+    );
+    return out;
+  }
+
+  /**
    * Month codes for VIOP contracts
    */
   static readonly VIOP_MONTH_CODES: Record<string, string> = {
@@ -308,4 +328,8 @@ let _searchProvider: TradingViewSearchProvider | null = null;
 export function getSearchProvider(): TradingViewSearchProvider {
   if (!_searchProvider) _searchProvider = new TradingViewSearchProvider();
   return _searchProvider;
+}
+
+export function monthCodeToName(code: string): string {
+  return TradingViewSearchProvider.monthCodeToName(code);
 }
