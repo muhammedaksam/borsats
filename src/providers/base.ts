@@ -178,4 +178,11 @@ export abstract class BaseProvider {
   public clearCache(): void {
     this.cache.clear();
   }
+
+  /**
+   * Release provider resources (aligned with borsapy's `BaseProvider.close()`).
+   */
+  public close(): void {
+    this.cache.clear();
+  }
 }

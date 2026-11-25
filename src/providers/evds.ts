@@ -3,6 +3,7 @@ import { format, parse } from "date-fns";
 
 import { APIError } from "~/exceptions";
 import { BaseProvider } from "~/providers/base";
+import { TTL } from "~/utils/helpers";
 
 // --- API Key Management ---
 let globalApiKey: string | null = null;
@@ -662,8 +663,14 @@ export class EVDSProvider extends BaseProvider {
     const startStr = formatEVDSDate(start);
     const endStr = formatEVDSDate(end);
 
+    const cacheKey = `evds:data:${codesStr}:${startStr}:${endStr}:${freqInt}:${aggStr}:${formulasStr}:${decimals}:${outputFormat}:${decimalSeparator}`;
+    const cached = this.cache.get(cacheKey);
+    if (cached !== undefined) {
+      return cached;
+    }
+
     if (outputFormat !== "json") {
-      return this.getSeriesDataRest(
+      const data = await this.getSeriesDataRest(
         codesStr,
         startStr,
         endStr,
@@ -675,22 +682,41 @@ export class EVDSProvider extends BaseProvider {
         outputFormat,
         decimalSeparator,
       );
+      this.cache.set(cacheKey, data, TTL.EVDS_DATA);
+      return data;
+    }
+
+    // Clamp future sentinel end dates (e.g. TCMB's recommended "01-01-2999")
+    // to today when estimating/splitting chunks, while keeping endStr on the final call.
+    const todayStr = format(new Date(), "dd-MM-yyyy");
+    let effectiveEndStr = endStr;
+    try {
+      const parsedEnd = parse(endStr, "dd-MM-yyyy", new Date());
+      if (!isNaN(parsedEnd.getTime()) && parsedEnd > new Date()) {
+        effectiveEndStr = todayStr;
+      }
+    } catch {
+      // ignore parse failure
     }
 
     let obsEstimate = 0;
     try {
-      obsEstimate = estimateObservations(startStr, endStr, freqInt);
+      obsEstimate = estimateObservations(startStr, effectiveEndStr, freqInt);
     } catch {
       obsEstimate = 0;
     }
 
+    let data: any;
     if (obsEstimate > EVDSProvider.MAX_OBSERVATIONS_PER_CALL) {
       const windows = splitWindow(
         startStr,
-        endStr,
+        effectiveEndStr,
         freqInt,
         EVDSProvider.MAX_OBSERVATIONS_PER_CALL,
       );
+      if (windows.length > 0 && effectiveEndStr !== endStr) {
+        windows[windows.length - 1][1] = endStr;
+      }
       const chunks: any[] = [];
       for (const [wStart, wEnd] of windows) {
         const part = await this.getSeriesDataRest(
@@ -707,9 +733,9 @@ export class EVDSProvider extends BaseProvider {
         );
         chunks.push(part);
       }
-      return mergeChunks(chunks);
+      data = mergeChunks(chunks);
     } else {
-      return this.getSeriesDataRest(
+      data = await this.getSeriesDataRest(
         codesStr,
         startStr,
         endStr,
@@ -722,6 +748,9 @@ export class EVDSProvider extends BaseProvider {
         decimalSeparator,
       );
     }
+
+    this.cache.set(cacheKey, data, TTL.EVDS_DATA);
+    return data;
   }
 
   public async getDatagroupData(

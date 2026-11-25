@@ -24,7 +24,7 @@ jest.mock("~/providers/tradingview-scanner", () => ({
   TASignals: {},
 }));
 
-import { Crypto, cryptoList } from "~/crypto";
+import { Crypto, cryptoList, cryptoPairs } from "~/crypto";
 
 describe("Crypto Coverage", () => {
   test("pair and symbol getters", () => {
@@ -72,8 +72,18 @@ describe("Crypto Coverage", () => {
     expect(all["1m"]).toHaveProperty("error");
   });
 
-  test("cryptoList returns pairs", async () => {
+  test("cryptoList and cryptoPairs return pairs", async () => {
     const pairs = await cryptoList();
     expect(pairs).toContain("BTCTRY");
+    const pairs2 = await cryptoPairs("TRY");
+    expect(pairs2).toContain("BTCTRY");
+  });
+
+  test("info alias and period option in history", async () => {
+    const c = new Crypto("btctry");
+    const info = await c.info;
+    expect(info.last).toBe(50000);
+    const h = await c.history({ period: "1mo" });
+    expect(Array.isArray(h)).toBe(true);
   });
 });

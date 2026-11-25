@@ -7,6 +7,7 @@
 
 import { APIError } from "~/exceptions";
 import { BaseProvider } from "~/providers/base";
+import { getTradingViewAuth } from "~/providers/tradingview";
 import { calculateSupertrend, calculateTilsonT3 } from "~/technical";
 import { Ticker } from "~/ticker";
 import { Interval } from "~/types";
@@ -169,7 +170,7 @@ export interface ScanResult {
 interface ParsedCondition {
   left: string;
   operator: string;
-  right: string | number;
+  right: string | number | [string, number];
 }
 
 export class TVScreenerProvider extends BaseProvider {
@@ -252,10 +253,37 @@ export class TVScreenerProvider extends BaseProvider {
   }
 
   /**
-   * Parse a condition string
+   * Parse a condition string (standard comparisons, crossovers, and percentage comparisons)
    */
   parseCondition(condition: string, interval: string): ParsedCondition | null {
     condition = condition.trim().toLowerCase();
+
+    // Crossover conditions: field1 crosses_above|crosses_below|crosses field2
+    const crossMatch = condition.match(
+      /^(\w+)\s+(crosses_above|crosses_below|crosses)\s+(\w+)$/,
+    );
+    if (crossMatch) {
+      return {
+        left: this.getTVColumn(crossMatch[1], interval),
+        operator: crossMatch[2],
+        right: this.getTVColumn(crossMatch[3], interval),
+      };
+    }
+
+    // Percentage conditions: field1 above_pct|below_pct field2 multiplier
+    const pctMatch = condition.match(
+      /^(\w+)\s+(above_pct|below_pct)\s+(\w+)\s+([\d.]+)$/,
+    );
+    if (pctMatch) {
+      const pctVal = parseFloat(pctMatch[4]);
+      if (!isNaN(pctVal)) {
+        return {
+          left: this.getTVColumn(pctMatch[1], interval),
+          operator: pctMatch[2],
+          right: [this.getTVColumn(pctMatch[3], interval), pctVal],
+        };
+      }
+    }
 
     // Pattern: field op value
     const match = condition.match(/^(\w+)\s*(>=|<=|>|<|==|!=)\s*(.+)$/);
@@ -608,15 +636,26 @@ export class TVScreenerProvider extends BaseProvider {
     const filters: Array<{
       left: string;
       operation: string;
-      right: string | number;
+      right: string | number | [string, number];
     }> = [];
+
+    const specialOps: Record<string, string> = {
+      crosses: "crosses",
+      crosses_above: "crosses_above",
+      crosses_below: "crosses_below",
+      above_pct: "above%",
+      below_pct: "below%",
+    };
 
     for (const cond of conditions) {
       const parsed = this.parseCondition(cond, interval);
       if (parsed) {
         filters.push({
           left: parsed.left,
-          operation: OPERATORS[parsed.operator] || "equal",
+          operation:
+            OPERATORS[parsed.operator] ||
+            specialOps[parsed.operator] ||
+            "equal",
           right: parsed.right,
         });
       }
@@ -638,13 +677,25 @@ export class TVScreenerProvider extends BaseProvider {
       range: [0, limit * 10],
     };
 
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    const auth = getTradingViewAuth();
+    if (auth?.session) {
+      const cookieParts = [`sessionid=${auth.session}`];
+      if (auth.sessionSign) {
+        cookieParts.push(`sessionid_sign=${auth.sessionSign}`);
+      }
+      headers.Cookie = cookieParts.join("; ");
+    }
+
     try {
       const data = await this.request<{
         data?: Array<{ s: string; d: (number | string | null)[] }>;
       }>(TVScreenerProvider.SCANNER_URL, {
         method: "POST",
         data: payload,
-        headers: { "Content-Type": "application/json" },
+        headers,
       });
 
       if (!data.data) return [];

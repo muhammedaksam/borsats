@@ -155,6 +155,13 @@ export class PineFacadeProvider extends BaseProvider {
     return INDICATOR_OUTPUTS[normalized] || {};
   }
 
+  /**
+   * Clear the indicator metadata cache.
+   */
+  clearIndicatorCache(): void {
+    this._indicatorCache = {};
+  }
+
   private _normalizeIndicatorId(indicatorId: string): string {
     const upper = indicatorId.toUpperCase();
     if (STANDARD_INDICATORS[upper]) {
@@ -231,4 +238,11 @@ export function getPineFacadeProvider(): PineFacadeProvider {
     _pineFacadeProvider = new PineFacadeProvider();
   }
   return _pineFacadeProvider;
+}
+
+/**
+ * Clear cached Pine Facade indicator metadata.
+ */
+export function clearIndicatorCache(): void {
+  getPineFacadeProvider().clearIndicatorCache();
 }

@@ -22,7 +22,6 @@
     "skipLibCheck": true,
     "allowSyntheticDefaultImports": true,
     "types": ["node", "jest"],
-    "ignoreDeprecations": "6.0",
     "paths": {
       "~/*": ["./src/*"]
     }

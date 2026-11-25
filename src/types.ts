@@ -40,7 +40,7 @@ export type Interval =
 /**
  * Valid fund types for TEFAS
  */
-export type FundType = "YAT" | "EMK";
+export type FundType = "YAT" | "EMK" | "BYF";
 
 /**
  * OHLCV (Open, High, Low, Close, Volume) data structure

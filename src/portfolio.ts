@@ -1,16 +1,37 @@
+import { riskFreeRate as fetchRiskFreeRate } from "~/bond";
 import { Crypto } from "~/crypto";
 import { Fund } from "~/fund";
 import { FX } from "~/fx";
+import { TechnicalMixin } from "~/technical";
 import { Ticker } from "~/ticker";
-import { Holding, Period } from "~/types";
+import { Holding, OHLCVData, Period } from "~/types";
 
 /**
  * Portfolio class for managing multi-asset portfolios
  */
-export class Portfolio {
-  private holdings: Map<string, Holding> = new Map();
+export class Portfolio extends TechnicalMixin {
+  private _holdings: Map<string, Holding> = new Map();
   private benchmark: string = "XU100";
-  private targetWeights: Record<string, number> = {};
+  private _targetWeights: Record<string, number> = {};
+
+  constructor(benchmark: string = "XU100") {
+    super();
+    this.benchmark = benchmark;
+  }
+
+  protected async _getTechnicalHistory(
+    period: Period = "1y",
+  ): Promise<OHLCVData[]> {
+    const hist = await this.history(period);
+    return hist.map((h) => ({
+      date: h.date,
+      open: h.value,
+      high: h.value,
+      low: h.value,
+      close: h.value,
+      volume: 0,
+    }));
+  }
 
   /**
    * Add a holding to the portfolio
@@ -26,7 +47,7 @@ export class Portfolio {
   ): Portfolio {
     const assetType = options.assetType || this.detectAssetType(symbol);
 
-    this.holdings.set(symbol, {
+    this._holdings.set(symbol, {
       symbol,
       assetType,
       shares: options.shares,
@@ -48,7 +69,7 @@ export class Portfolio {
       purchaseDate?: Date | string;
     },
   ): Portfolio {
-    const holding = this.holdings.get(symbol);
+    const holding = this._holdings.get(symbol);
     if (!holding) {
       throw new Error(`Holding not found: ${symbol}`);
     }
@@ -70,7 +91,7 @@ export class Portfolio {
    * Remove a holding
    */
   remove(symbol: string): Portfolio {
-    this.holdings.delete(symbol);
+    this._holdings.delete(symbol);
     return this;
   }
 
@@ -90,7 +111,7 @@ export class Portfolio {
   }
 
   private async calculateTotalValue(): Promise<number> {
-    const promises = Array.from(this.holdings.values()).map(async (h) => {
+    const promises = Array.from(this._holdings.values()).map(async (h) => {
       let price = 0;
       try {
         if (h.assetType === "stock") {
@@ -120,7 +141,7 @@ export class Portfolio {
    */
   get cost(): number {
     let total = 0;
-    for (const holding of this.holdings.values()) {
+    for (const holding of this._holdings.values()) {
       if (holding.costPerShare) {
         total += holding.shares * holding.costPerShare;
       }
@@ -152,7 +173,7 @@ export class Portfolio {
       const weights: Record<string, number> = {};
       if (totalVal === 0) return weights;
 
-      for (const h of this.holdings.values()) {
+      for (const h of this._holdings.values()) {
         let price = 0;
         try {
           // Re-fetch logic duplicate, ideally cached or parallelized differently
@@ -187,10 +208,10 @@ export class Portfolio {
       targetWeights?: Record<string, number>;
     } = {
       benchmark: this.benchmark,
-      holdings: Array.from(this.holdings.values()),
+      holdings: Array.from(this._holdings.values()),
     };
-    if (Object.keys(this.targetWeights).length > 0) {
-      result.targetWeights = { ...this.targetWeights };
+    if (Object.keys(this._targetWeights).length > 0) {
+      result.targetWeights = { ...this._targetWeights };
     }
     return result;
   }
@@ -203,11 +224,7 @@ export class Portfolio {
     holdings: Array<Holding & { symbol: string }>;
     targetWeights?: Record<string, number>;
   }): Portfolio {
-    const portfolio = new Portfolio();
-
-    if (data.benchmark) {
-      portfolio.setBenchmark(data.benchmark);
-    }
+    const portfolio = new Portfolio(data.benchmark || "XU100");
 
     for (const holding of data.holdings) {
       portfolio.add(holding.symbol, {
@@ -229,7 +246,7 @@ export class Portfolio {
    * Clear all holdings
    */
   clear(): Portfolio {
-    this.holdings.clear();
+    this._holdings.clear();
     return this;
   }
 
@@ -257,7 +274,14 @@ export class Portfolio {
    * Get list of symbols in portfolio
    */
   get symbols(): string[] {
-    return Array.from(this.holdings.keys());
+    return Array.from(this._holdings.keys());
+  }
+
+  /**
+   * Holdings detail getter (aligned with borsapy's `portfolio.holdings`)
+   */
+  get holdings(): ReturnType<Portfolio["holdingsDetail"]> {
+    return this.holdingsDetail();
   }
 
   /**
@@ -274,9 +298,11 @@ export class Portfolio {
       weight: number;
       pnl: number;
       pnlPct: number;
+      holdingDays?: number | null;
     }>
   > {
     const totalValue = await this.calculateTotalValue();
+    const today = Date.now();
     const result: Array<{
       symbol: string;
       assetType: string;
@@ -287,9 +313,10 @@ export class Portfolio {
       weight: number;
       pnl: number;
       pnlPct: number;
+      holdingDays?: number | null;
     }> = [];
 
-    for (const h of this.holdings.values()) {
+    for (const h of this._holdings.values()) {
       let price = 0;
       try {
         if (h.assetType === "stock") {
@@ -312,6 +339,12 @@ export class Portfolio {
       const costBasis = h.costPerShare ? h.shares * h.costPerShare : 0;
       const pnl = costBasis > 0 ? value - costBasis : 0;
       const pnlPct = costBasis > 0 ? (pnl / costBasis) * 100 : 0;
+      const holdingDays = h.purchaseDate
+        ? Math.floor(
+            (today - new Date(h.purchaseDate).getTime()) /
+              (24 * 60 * 60 * 1000),
+          )
+        : null;
 
       result.push({
         symbol: h.symbol,
@@ -323,10 +356,44 @@ export class Portfolio {
         weight: totalValue > 0 ? (value / totalValue) * 100 : 0,
         pnl,
         pnlPct,
+        holdingDays,
       });
     }
 
     return result;
+  }
+
+  private async _fetchAssetHistory(
+    h: Holding,
+    period: string,
+  ): Promise<Array<{ date: Date; close: number }>> {
+    if (h.assetType === "stock") {
+      const rawHist = await new Ticker(h.symbol).history({
+        period: period as Period,
+      });
+      return rawHist.map((d) => ({ date: d.date, close: d.close }));
+    } else if (h.assetType === "fund") {
+      const rawHist = await new Fund(h.symbol).history({ period });
+      return rawHist.map((d) => ({
+        date: new Date(d.date),
+        close: d.price,
+      }));
+    } else if (h.assetType === "fx") {
+      const rawHist = await new FX(h.symbol).history({ period });
+      return rawHist.map((d) => ({
+        date: new Date(d.date),
+        close: d.close,
+      }));
+    } else if (h.assetType === "crypto") {
+      const rawHist = await new Crypto(h.symbol).history({
+        period: period as Period,
+      });
+      return rawHist.map((d) => ({
+        date: new Date(d.date),
+        close: d.close,
+      }));
+    }
+    return [];
   }
 
   /**
@@ -335,29 +402,17 @@ export class Portfolio {
   async history(
     period: string = "1y",
   ): Promise<Array<{ date: Date; value: number; dailyReturn: number }>> {
-    if (this.holdings.size === 0) return [];
+    if (this._holdings.size === 0) return [];
 
     const histories: Map<
       string,
       Array<{ date: Date; close: number }>
     > = new Map();
 
-    // Fetch history for each holding
-    for (const h of this.holdings.values()) {
+    // Fetch history for each holding across all asset types
+    for (const h of this._holdings.values()) {
       try {
-        let hist: Array<{ date: Date; close: number }> = [];
-        if (h.assetType === "stock") {
-          const rawHist = await new Ticker(h.symbol).history({
-            period: period as Period,
-          });
-          hist = rawHist.map((d) => ({ date: d.date, close: d.close }));
-        } else if (h.assetType === "fund") {
-          const rawHist = await new Fund(h.symbol).history({ period });
-          hist = rawHist.map((d) => ({
-            date: new Date(d.date),
-            close: d.price,
-          }));
-        }
+        let hist = await this._fetchAssetHistory(h, period);
 
         // Filter by purchase date if available
         if (h.purchaseDate) {
@@ -390,7 +445,7 @@ export class Portfolio {
     for (const dateStr of sortedDates) {
       let totalValue = 0;
       for (const [symbol, hist] of histories) {
-        const holding = this.holdings.get(symbol);
+        const holding = this._holdings.get(symbol);
         if (!holding) continue;
 
         const entry = hist.find(
@@ -463,6 +518,8 @@ export class Portfolio {
     sharpeRatio: number;
     sortinoRatio: number;
     maxDrawdown: number;
+    beta: number;
+    alpha: number;
     riskFreeRate: number;
     tradingDays: number;
   }> {
@@ -474,6 +531,8 @@ export class Portfolio {
         sharpeRatio: NaN,
         sortinoRatio: NaN,
         maxDrawdown: NaN,
+        beta: NaN,
+        alpha: NaN,
         riskFreeRate: NaN,
         tradingDays: 0,
       };
@@ -482,26 +541,48 @@ export class Portfolio {
     const values = hist.map((h) => h.value);
     const returns: number[] = [];
     for (let i = 1; i < values.length; i++) {
-      returns.push((values[i] - values[i - 1]) / values[i - 1]);
+      if (values[i - 1] > 0) {
+        returns.push((values[i] - values[i - 1]) / values[i - 1]);
+      }
     }
 
     const tradingDays = returns.length;
     const annualizationFactor = 252;
 
     // Annualized return
-    const totalReturn = values[values.length - 1] / values[0] - 1;
+    const totalReturn =
+      values[0] > 0 ? values[values.length - 1] / values[0] - 1 : 0;
     const years = tradingDays / annualizationFactor;
-    const annualizedReturn = ((1 + totalReturn) ** (1 / years) - 1) * 100;
+    const annualizedReturn =
+      years > 0 ? ((1 + totalReturn) ** (1 / years) - 1) * 100 : NaN;
 
-    // Volatility
+    // Sample volatility (ddof=1)
     const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+    const denom = returns.length > 1 ? returns.length - 1 : 1;
     const variance =
-      returns.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / returns.length;
+      returns.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / denom;
     const stdDev = Math.sqrt(variance);
     const annualizedVolatility = stdDev * Math.sqrt(annualizationFactor) * 100;
 
-    // Risk free rate
-    const rf = riskFreeRate !== undefined ? riskFreeRate : 28.0;
+    // Risk free rate (percentage). Accepts decimal (e.g. 0.28) or pct (e.g. 28).
+    let rf: number;
+    if (riskFreeRate === undefined) {
+      try {
+        const rfVal = await fetchRiskFreeRate();
+        if (rfVal !== null && rfVal !== undefined && !isNaN(rfVal)) {
+          rf = rfVal <= 1 ? rfVal * 100 : rfVal;
+        } else {
+          rf = 28.0;
+        }
+      } catch {
+        rf = 28.0;
+      }
+    } else {
+      rf =
+        riskFreeRate > 0 && riskFreeRate <= 1
+          ? riskFreeRate * 100
+          : riskFreeRate;
+    }
 
     // Sharpe
     const sharpeRatio =
@@ -515,9 +596,11 @@ export class Portfolio {
     if (negativeReturns.length > 0) {
       const downMean =
         negativeReturns.reduce((a, b) => a + b, 0) / negativeReturns.length;
+      const downDenom =
+        negativeReturns.length > 1 ? negativeReturns.length - 1 : 1;
       const downVar =
         negativeReturns.reduce((a, b) => a + Math.pow(b - downMean, 2), 0) /
-        negativeReturns.length;
+        downDenom;
       const downStd = Math.sqrt(downVar) * Math.sqrt(annualizationFactor) * 100;
       if (downStd > 0) {
         sortinoRatio = (annualizedReturn - rf) / downStd;
@@ -529,10 +612,67 @@ export class Portfolio {
     let peak = values[0];
     for (const v of values) {
       if (v > peak) peak = v;
-      const dd = (v - peak) / peak;
-      if (dd < maxDrawdown) maxDrawdown = dd;
+      if (peak > 0) {
+        const dd = (v - peak) / peak;
+        if (dd < maxDrawdown) maxDrawdown = dd;
+      }
     }
     maxDrawdown = maxDrawdown * 100;
+
+    // Beta & Jensen's Alpha vs benchmark
+    let betaVal = NaN;
+    let alphaVal = NaN;
+    try {
+      const benchHist = await new Ticker(this.benchmark).history({
+        period: period as Period,
+      });
+      if (benchHist.length >= 20) {
+        const benchMap = new Map(
+          benchHist.map((h) => [h.date.toISOString().split("T")[0], h.close]),
+        );
+        const pRet: number[] = [];
+        const bRet: number[] = [];
+        let prevP = 0;
+        let prevB = 0;
+        let firstBench = 0;
+        let lastBench = 0;
+        for (const h of hist) {
+          const dk = h.date.toISOString().split("T")[0];
+          const bClose = benchMap.get(dk);
+          if (!bClose) continue;
+          if (firstBench === 0) firstBench = bClose;
+          lastBench = bClose;
+          if (prevP > 0 && prevB > 0) {
+            pRet.push((h.value - prevP) / prevP);
+            bRet.push((bClose - prevB) / prevB);
+          }
+          prevP = h.value;
+          prevB = bClose;
+        }
+        if (pRet.length >= 10) {
+          const mP = pRet.reduce((a, b) => a + b, 0) / pRet.length;
+          const mB = bRet.reduce((a, b) => a + b, 0) / bRet.length;
+          let cov = 0;
+          let bVar = 0;
+          for (let i = 0; i < pRet.length; i++) {
+            cov += (pRet[i] - mP) * (bRet[i] - mB);
+            bVar += Math.pow(bRet[i] - mB, 2);
+          }
+          if (bVar > 0) {
+            betaVal = cov / bVar;
+            const bTotal = firstBench > 0 ? lastBench / firstBench - 1 : 0;
+            const bYears = pRet.length / annualizationFactor;
+            const bAnnReturn =
+              bYears > 0 ? ((1 + bTotal) ** (1 / bYears) - 1) * 100 : NaN;
+            if (!isNaN(bAnnReturn) && !isNaN(annualizedReturn)) {
+              alphaVal = annualizedReturn - (rf + betaVal * (bAnnReturn - rf));
+            }
+          }
+        }
+      }
+    } catch {
+      // Leave beta/alpha as NaN if benchmark unavailable
+    }
 
     return {
       annualizedReturn,
@@ -540,6 +680,8 @@ export class Portfolio {
       sharpeRatio,
       sortinoRatio,
       maxDrawdown,
+      beta: betaVal,
+      alpha: alphaVal,
       riskFreeRate: rf,
       tradingDays,
     };
@@ -619,7 +761,7 @@ export class Portfolio {
   }
 
   /**
-   * Calculate correlation matrix between holdings
+   * Calculate correlation matrix between holdings (across all asset types)
    */
   async correlationMatrix(
     period: string = "1y",
@@ -627,27 +769,27 @@ export class Portfolio {
     const symbols = this.symbols;
     if (symbols.length < 2) return {};
 
-    const histories: Map<string, number[]> = new Map();
+    const histories: Map<string, Map<string, number>> = new Map();
 
-    // Fetch returns for each holding
+    // Fetch returns for each holding keyed by date
     for (const symbol of symbols) {
-      const h = this.holdings.get(symbol);
+      const h = this._holdings.get(symbol);
       if (!h) continue;
 
       try {
-        let returns: number[] = [];
-        if (h.assetType === "stock") {
-          const hist = await new Ticker(symbol).history({
-            period: period as Period,
-          });
-          for (let i = 1; i < hist.length; i++) {
-            returns.push(
+        const hist = await this._fetchAssetHistory(h, period);
+        const retByDate = new Map<string, number>();
+        for (let i = 1; i < hist.length; i++) {
+          if (hist[i - 1].close > 0) {
+            const dk = hist[i].date.toISOString().split("T")[0];
+            retByDate.set(
+              dk,
               (hist[i].close - hist[i - 1].close) / hist[i - 1].close,
             );
           }
         }
-        if (returns.length > 10) {
-          histories.set(symbol, returns);
+        if (retByDate.size > 10) {
+          histories.set(symbol, retByDate);
         }
       } catch {
         // skip
@@ -656,17 +798,28 @@ export class Portfolio {
 
     const result: Record<string, Record<string, number>> = {};
 
-    for (const [sym1, returns1] of histories) {
+    for (const [sym1, map1] of histories) {
       result[sym1] = {};
-      for (const [sym2, returns2] of histories) {
+      for (const [sym2, map2] of histories) {
         if (sym1 === sym2) {
           result[sym1][sym2] = 1.0;
           continue;
         }
 
-        const len = Math.min(returns1.length, returns2.length);
-        const r1 = returns1.slice(-len);
-        const r2 = returns2.slice(-len);
+        const r1: number[] = [];
+        const r2: number[] = [];
+        for (const [dk, v1] of map1) {
+          const v2 = map2.get(dk);
+          if (v2 !== undefined) {
+            r1.push(v1);
+            r2.push(v2);
+          }
+        }
+
+        if (r1.length < 2) {
+          result[sym1][sym2] = 0;
+          continue;
+        }
 
         const mean1 = r1.reduce((a, b) => a + b, 0) / r1.length;
         const mean2 = r2.reduce((a, b) => a + b, 0) / r2.length;
@@ -674,7 +827,7 @@ export class Portfolio {
         let covariance = 0;
         let var1 = 0;
         let var2 = 0;
-        for (let i = 0; i < len; i++) {
+        for (let i = 0; i < r1.length; i++) {
           covariance += (r1[i] - mean1) * (r2[i] - mean2);
           var1 += Math.pow(r1[i] - mean1, 2);
           var2 += Math.pow(r2[i] - mean2, 2);
@@ -693,15 +846,22 @@ export class Portfolio {
    * @param weights Record of symbol → target weight (0-1 scale, must sum to ~1.0)
    */
   setTargetWeights(weights: Record<string, number>): Portfolio {
-    this.targetWeights = { ...weights };
+    this._targetWeights = { ...weights };
     return this;
+  }
+
+  /**
+   * Get target weights (getter aligned with borsapy's `portfolio.target_weights`)
+   */
+  get targetWeights(): Record<string, number> {
+    return { ...this._targetWeights };
   }
 
   /**
    * Get target weights
    */
   getTargetWeights(): Record<string, number> {
-    return { ...this.targetWeights };
+    return { ...this._targetWeights };
   }
 
   /**
@@ -717,7 +877,7 @@ export class Portfolio {
       driftPct: number;
     }>
   > {
-    if (Object.keys(this.targetWeights).length === 0) {
+    if (Object.keys(this._targetWeights).length === 0) {
       throw new Error("No target weights set. Use setTargetWeights() first.");
     }
 
@@ -731,7 +891,7 @@ export class Portfolio {
     }> = [];
 
     // Iterate over all symbols in target weights
-    for (const [symbol, target] of Object.entries(this.targetWeights)) {
+    for (const [symbol, target] of Object.entries(this._targetWeights)) {
       const current = currentWeights[symbol] || 0;
       const drift = current - target;
       const driftPct =
@@ -748,7 +908,7 @@ export class Portfolio {
 
     // Also check if portfolio has symbols not in targets
     for (const symbol of Object.keys(currentWeights)) {
-      if (!(symbol in this.targetWeights)) {
+      if (!(symbol in this._targetWeights)) {
         const current = currentWeights[symbol];
         result.push({
           symbol,
@@ -815,7 +975,9 @@ export class Portfolio {
 
   /**
    * Execute rebalancing (dry-run by default).
-   * Returns the rebalance plan without actually executing trades.
+   * When `dryRun` is `false`, updates portfolio holding share counts to match
+   * target weights (rounding stock shares to integers, removing zero-target
+   * positions, and adding new positions when needed).
    *
    * @param threshold Minimum drift % to trigger trades (default: 5)
    * @param dryRun If true, just return the plan without modifying portfolio (default: true)
@@ -835,6 +997,66 @@ export class Portfolio {
     executed: boolean;
   }> {
     const plan = await this.rebalancePlan(threshold);
-    return { plan, executed: !dryRun };
+    if (dryRun || plan.length === 0) {
+      return { plan, executed: false };
+    }
+
+    const totalValue = await this.value;
+    if (totalValue <= 0) {
+      return { plan, executed: false };
+    }
+
+    for (const trade of plan) {
+      const existing = this._holdings.get(trade.symbol);
+      const assetType =
+        existing?.assetType || this.detectAssetType(trade.symbol);
+      const price = await this.getAssetPrice(trade.symbol, assetType);
+      if (price <= 0) continue;
+
+      const targetValue = totalValue * trade.targetWeight;
+      let targetShares = targetValue / price;
+      if (assetType === "stock") {
+        targetShares = Math.round(targetShares);
+      } else {
+        targetShares = Math.round(targetShares * 10000) / 10000;
+      }
+
+      if (existing) {
+        if (targetShares <= 0) {
+          this.remove(trade.symbol);
+        } else {
+          existing.shares = targetShares;
+        }
+      } else if (targetShares > 0) {
+        this.add(trade.symbol, {
+          shares: targetShares,
+          cost: price,
+          assetType,
+          purchaseDate: new Date().toISOString().slice(0, 10),
+        });
+      }
+    }
+
+    return { plan, executed: true };
+  }
+
+  private async getAssetPrice(
+    symbol: string,
+    assetType: "stock" | "fx" | "crypto" | "fund",
+  ): Promise<number> {
+    try {
+      if (assetType === "stock") {
+        return (await new Ticker(symbol).fastInfo.lastPrice) || 0;
+      } else if (assetType === "fund") {
+        return (await new Fund(symbol).info).price || 0;
+      } else if (assetType === "fx") {
+        return (await new FX(symbol).current).last || 0;
+      } else if (assetType === "crypto") {
+        return (await new Crypto(symbol).current).last || 0;
+      }
+    } catch {
+      // ignore price fetch errors
+    }
+    return 0;
   }
 }

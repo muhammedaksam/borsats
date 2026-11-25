@@ -2,6 +2,7 @@ import { getBistIndexProvider } from "~/providers/bist-index";
 import { getTradingViewProvider } from "~/providers/tradingview";
 import { getScannerProvider, TASignals } from "~/providers/tradingview-scanner";
 import { scan, ScanResult } from "~/scanner";
+import { TechnicalMixin } from "~/technical";
 import {
   IndexComponent,
   IndexInfo,
@@ -100,11 +101,19 @@ export function index(symbol: string): Index {
 /**
  * Index class for BIST indices
  */
-export class Index {
+export class Index extends TechnicalMixin {
   public readonly symbol: string;
 
   constructor(symbol: string) {
+    super();
     this.symbol = symbol.toUpperCase();
+  }
+
+  protected async _getTechnicalHistory(
+    period: Period = "1y",
+    interval: Interval = "1d",
+  ): Promise<OHLCVData[]> {
+    return this.history({ period, interval });
   }
 
   /**

@@ -49,9 +49,16 @@ describe("EVDS Comprehensive Coverage", () => {
       mockedAxios.get.mockResolvedValue({ data: { items: mockPayload } });
       const res = await series.history();
       expect(res.length).toBeGreaterThan(0);
-      
+
+      // Verify caching on repeated call
+      const cachedCallCount = mockedAxios.get.mock.calls.length;
+      const resCached = await series.history();
+      expect(resCached.length).toBe(res.length);
+      expect(mockedAxios.get.mock.calls.length).toBe(cachedCallCount);
+
       // Test normalization branches in frameFromPayload
       // Match via normalizedUs (TP_TEST)
+      provider.clearCache();
       mockedAxios.get.mockResolvedValue({ data: { items: [
         { TARIH: "01-01-2024", "TP_TEST": 10 }
       ]}});
@@ -59,11 +66,16 @@ describe("EVDS Comprehensive Coverage", () => {
       expect(resUs[0]).toBeDefined();
 
       // Match via hyphenated base (TP_TEST-AVG)
+      provider.clearCache();
       mockedAxios.get.mockResolvedValue({ data: { items: [
         { TARIH: "01-01-2024", "TP_TEST-AVG": 20 }
       ]}});
-      const resHyphen = await series.history();
+      const resHyphen = await series.history({ decimals: 0 });
       expect(resHyphen[0]).toBeDefined();
+      expect(mockedAxios.get).toHaveBeenLastCalledWith(
+        expect.stringContaining("decimal=0"),
+        expect.anything(),
+      );
     });
 
     it("should cover evdsDownload wrapper", async () => {

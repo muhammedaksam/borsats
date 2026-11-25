@@ -1,14 +1,20 @@
 import { calculateHeikinAshi } from "~/charts";
-import { OHLCVData } from "~/types";
+import { Interval, OHLCVData, Period } from "~/types";
+
+export type OHLCVColumn = "open" | "high" | "low" | "close";
 
 /**
  * Calculate Simple Moving Average (SMA)
  */
-export function calculateSMA(data: OHLCVData[], period: number = 20): number[] {
+export function calculateSMA(
+  data: OHLCVData[],
+  period: number = 20,
+  column: OHLCVColumn = "close",
+): number[] {
   if (data.length < period) return [];
 
   const sma: number[] = [];
-  const closes = data.map((d) => d.close);
+  const closes = data.map((d) => d[column]);
 
   for (let i = 0; i < closes.length; i++) {
     if (i < period - 1) {
@@ -27,11 +33,15 @@ export function calculateSMA(data: OHLCVData[], period: number = 20): number[] {
 /**
  * Calculate Exponential Moving Average (EMA)
  */
-export function calculateEMA(data: OHLCVData[], period: number = 20): number[] {
+export function calculateEMA(
+  data: OHLCVData[],
+  period: number = 20,
+  column: OHLCVColumn = "close",
+): number[] {
   if (data.length === 0) return [];
 
   const ema: number[] = [];
-  const closes = data.map((d) => d.close);
+  const closes = data.map((d) => d[column]);
   const k = 2 / (period + 1);
 
   // Initialize with SMA for the first valid point or just the first price
@@ -54,13 +64,17 @@ export function calculateEMA(data: OHLCVData[], period: number = 20): number[] {
 /**
  * Calculate RSI (Relative Strength Index)
  */
-export function calculateRSI(data: OHLCVData[], period: number = 14): number[] {
+export function calculateRSI(
+  data: OHLCVData[],
+  period: number = 14,
+  column: OHLCVColumn = "close",
+): number[] {
   if (data.length < period) {
     return new Array(data.length).fill(NaN);
   }
 
   const rsi: number[] = [];
-  const closes = data.map((d) => d.close);
+  const closes = data.map((d) => d[column]);
 
   // Need to calculate deltas
   const deltas: number[] = [];
@@ -116,11 +130,12 @@ export function calculateMACD(
   fast: number = 12,
   slow: number = 26,
   signal: number = 9,
+  column: OHLCVColumn = "close",
 ): Array<{ macd: number; signal: number; histogram: number }> {
   if (data.length === 0) return [];
 
-  const emaFast = calculateEMA(data, fast);
-  const emaSlow = calculateEMA(data, slow);
+  const emaFast = calculateEMA(data, fast, column);
+  const emaSlow = calculateEMA(data, slow, column);
 
   const macdLine: number[] = [];
   for (let i = 0; i < data.length; i++) {
@@ -161,10 +176,11 @@ export function calculateBollingerBands(
   data: OHLCVData[],
   period: number = 20,
   stdDev: number = 2.0,
+  column: OHLCVColumn = "close",
 ): Array<{ upper: number; middle: number; lower: number }> {
   const bands: Array<{ upper: number; middle: number; lower: number }> = [];
-  const sma = calculateSMA(data, period);
-  const closes = data.map((d) => d.close);
+  const sma = calculateSMA(data, period, column);
+  const closes = data.map((d) => d[column]);
 
   for (let i = 0; i < data.length; i++) {
     if (isNaN(sma[i])) {
@@ -516,10 +532,11 @@ export function calculateTilsonT3(
   data: OHLCVData[],
   period: number = 5,
   vfactor: number = 0.7,
+  column: OHLCVColumn = "close",
 ): number[] {
   if (data.length === 0) return [];
 
-  const closes = data.map((d) => d.close);
+  const closes = data.map((d) => d[column]);
 
   // Calculate coefficients
   const c1 = -(vfactor ** 3);
@@ -607,8 +624,12 @@ export function calculateLLV(
  *
  * MOM = Close - Close[N periods ago]
  */
-export function calculateMOM(data: OHLCVData[], period: number = 10): number[] {
-  const closes = data.map((d) => d.close);
+export function calculateMOM(
+  data: OHLCVData[],
+  period: number = 10,
+  column: OHLCVColumn = "close",
+): number[] {
+  const closes = data.map((d) => d[column]);
   const result: number[] = [];
 
   for (let i = 0; i < closes.length; i++) {
@@ -627,8 +648,12 @@ export function calculateMOM(data: OHLCVData[], period: number = 10): number[] {
  *
  * ROC = ((Close - Close[N]) / Close[N]) * 100
  */
-export function calculateROC(data: OHLCVData[], period: number = 10): number[] {
-  const closes = data.map((d) => d.close);
+export function calculateROC(
+  data: OHLCVData[],
+  period: number = 10,
+  column: OHLCVColumn = "close",
+): number[] {
+  const closes = data.map((d) => d[column]);
   const result: number[] = [];
 
   for (let i = 0; i < closes.length; i++) {
@@ -649,8 +674,12 @@ export function calculateROC(data: OHLCVData[], period: number = 10): number[] {
  *
  * Each data point is weighted by its position (most recent has highest weight).
  */
-export function calculateWMA(data: OHLCVData[], period: number = 20): number[] {
-  const closes = data.map((d) => d.close);
+export function calculateWMA(
+  data: OHLCVData[],
+  period: number = 20,
+  column: OHLCVColumn = "close",
+): number[] {
+  const closes = data.map((d) => d[column]);
   const result: number[] = [];
   const weightSum = (period * (period + 1)) / 2;
 
@@ -678,8 +707,9 @@ export function calculateWMA(data: OHLCVData[], period: number = 20): number[] {
 export function calculateDEMA(
   data: OHLCVData[],
   period: number = 20,
+  column: OHLCVColumn = "close",
 ): number[] {
-  const ema1 = calculateEMA(data, period);
+  const ema1 = calculateEMA(data, period, column);
 
   // Calculate EMA of EMA (need to wrap in OHLCVData-like objects)
   const emaData: OHLCVData[] = ema1.map((v, i) => ({
@@ -703,8 +733,9 @@ export function calculateDEMA(
 export function calculateTEMA(
   data: OHLCVData[],
   period: number = 20,
+  column: OHLCVColumn = "close",
 ): number[] {
-  const ema1 = calculateEMA(data, period);
+  const ema1 = calculateEMA(data, period, column);
 
   const wrapAsOHLCV = (values: number[]): OHLCVData[] =>
     values.map((v, i) => ({
@@ -1181,6 +1212,11 @@ export class TechnicalAnalyzer {
     return calculateHeikinAshi(this.data);
   }
 
+  /** Return OHLCV data with all applicable technical indicators added. */
+  all(options?: AddIndicatorsOptions): IndicatorData[] {
+    return addIndicators(this.data, options);
+  }
+
   /** Get latest values for all indicators */
   get latest(): Record<string, number> {
     if (this.data.length === 0) return {};
@@ -1381,5 +1417,211 @@ export class TechnicalAnalyzer {
       basePeriod,
       spanBPeriod,
     );
+  }
+}
+
+/**
+ * Abstract base mixin adding full technical analysis shortcuts to asset classes
+ * (Ticker, FX, Crypto, Index, Fund, Portfolio) — aligned with borsapy's `TechnicalMixin`.
+ */
+export abstract class TechnicalMixin {
+  protected abstract _getTechnicalHistory(
+    period?: Period,
+    interval?: Interval,
+  ): Promise<OHLCVData[]>;
+
+  async technicals(
+    period: Period = "1y",
+    interval: Interval = "1d",
+  ): Promise<TechnicalAnalyzer> {
+    const hist = await this._getTechnicalHistory(period, interval);
+    return new TechnicalAnalyzer(hist);
+  }
+
+  async historyWithIndicators(
+    period: Period = "1mo",
+    options: AddIndicatorsOptions & { interval?: Interval } = {},
+  ): Promise<IndicatorData[]> {
+    const { interval = "1d", ...indOpts } = options;
+    const hist = await this._getTechnicalHistory(period, interval);
+    return addIndicators(hist, indOpts);
+  }
+
+  async rsi(period: Period = "3mo", rsiPeriod = 14): Promise<number> {
+    const hist = await this._getTechnicalHistory(period);
+    if (hist.length === 0) return NaN;
+    const series = calculateRSI(hist, rsiPeriod);
+    return series[series.length - 1];
+  }
+
+  async sma(period: Period = "3mo", smaPeriod = 20): Promise<number> {
+    const hist = await this._getTechnicalHistory(period);
+    if (hist.length === 0) return NaN;
+    const series = calculateSMA(hist, smaPeriod);
+    return series.length > 0 ? series[series.length - 1] : NaN;
+  }
+
+  async ema(period: Period = "3mo", emaPeriod = 20): Promise<number> {
+    const hist = await this._getTechnicalHistory(period);
+    if (hist.length === 0) return NaN;
+    const series = calculateEMA(hist, emaPeriod);
+    return series[series.length - 1];
+  }
+
+  async tilsonT3(
+    period: Period = "3mo",
+    t3Period = 5,
+    vfactor = 0.7,
+  ): Promise<number> {
+    const hist = await this._getTechnicalHistory(period);
+    if (hist.length === 0) return NaN;
+    const series = calculateTilsonT3(hist, t3Period, vfactor);
+    return series[series.length - 1];
+  }
+
+  async macd(
+    period: Period = "3mo",
+    fast = 12,
+    slow = 26,
+    signal = 9,
+  ): Promise<{ macd: number; signal: number; histogram: number }> {
+    const hist = await this._getTechnicalHistory(period);
+    if (hist.length === 0) return { macd: NaN, signal: NaN, histogram: NaN };
+    const series = calculateMACD(hist, fast, slow, signal);
+    return series[series.length - 1];
+  }
+
+  async bollingerBands(
+    period: Period = "3mo",
+    bbPeriod = 20,
+    stdDev = 2.0,
+  ): Promise<{ upper: number; middle: number; lower: number }> {
+    const hist = await this._getTechnicalHistory(period);
+    if (hist.length === 0) return { upper: NaN, middle: NaN, lower: NaN };
+    const series = calculateBollingerBands(hist, bbPeriod, stdDev);
+    return series[series.length - 1];
+  }
+
+  async atr(period: Period = "3mo", atrPeriod = 14): Promise<number> {
+    const hist = await this._getTechnicalHistory(period);
+    if (hist.length === 0) return NaN;
+    const series = calculateATR(hist, atrPeriod);
+    return series[series.length - 1];
+  }
+
+  async stochastic(
+    period: Period = "3mo",
+    kPeriod = 14,
+    dPeriod = 3,
+  ): Promise<{ k: number; d: number }> {
+    const hist = await this._getTechnicalHistory(period);
+    if (hist.length === 0) return { k: NaN, d: NaN };
+    const series = calculateStochastic(hist, kPeriod, dPeriod);
+    return series[series.length - 1];
+  }
+
+  async obv(period: Period = "3mo"): Promise<number> {
+    const hist = await this._getTechnicalHistory(period);
+    if (hist.length === 0) return NaN;
+    const series = calculateOBV(hist);
+    return series[series.length - 1];
+  }
+
+  async vwap(period: Period = "3mo"): Promise<number> {
+    const hist = await this._getTechnicalHistory(period);
+    if (hist.length === 0) return NaN;
+    const series = calculateVWAP(hist);
+    return series[series.length - 1];
+  }
+
+  async adx(period: Period = "3mo", adxPeriod = 14): Promise<number> {
+    const hist = await this._getTechnicalHistory(period);
+    if (hist.length === 0) return NaN;
+    const series = calculateADX(hist, adxPeriod);
+    return series[series.length - 1];
+  }
+
+  async supertrend(
+    period: Period = "3mo",
+    atrPeriod = 10,
+    multiplier = 3.0,
+  ): Promise<{
+    supertrend: number;
+    direction: number;
+    upper: number;
+    lower: number;
+  }> {
+    const hist = await this._getTechnicalHistory(period);
+    if (hist.length === 0) {
+      return { supertrend: NaN, direction: 0, upper: NaN, lower: NaN };
+    }
+    const series = calculateSupertrend(hist, atrPeriod, multiplier);
+    return series[series.length - 1];
+  }
+
+  async hhv(
+    period: Period = "3mo",
+    hhvPeriod = 14,
+    column: OHLCVColumn = "high",
+  ): Promise<number> {
+    const hist = await this._getTechnicalHistory(period);
+    if (hist.length === 0) return NaN;
+    const series = calculateHHV(hist, hhvPeriod, column);
+    return series[series.length - 1];
+  }
+
+  async llv(
+    period: Period = "3mo",
+    llvPeriod = 14,
+    column: OHLCVColumn = "low",
+  ): Promise<number> {
+    const hist = await this._getTechnicalHistory(period);
+    if (hist.length === 0) return NaN;
+    const series = calculateLLV(hist, llvPeriod, column);
+    return series[series.length - 1];
+  }
+
+  async mom(period: Period = "3mo", momPeriod = 10): Promise<number> {
+    const hist = await this._getTechnicalHistory(period);
+    if (hist.length === 0) return NaN;
+    const series = calculateMOM(hist, momPeriod);
+    return series[series.length - 1];
+  }
+
+  async roc(period: Period = "3mo", rocPeriod = 10): Promise<number> {
+    const hist = await this._getTechnicalHistory(period);
+    if (hist.length === 0) return NaN;
+    const series = calculateROC(hist, rocPeriod);
+    return series[series.length - 1];
+  }
+
+  async wma(period: Period = "3mo", wmaPeriod = 20): Promise<number> {
+    const hist = await this._getTechnicalHistory(period);
+    if (hist.length === 0) return NaN;
+    const series = calculateWMA(hist, wmaPeriod);
+    return series[series.length - 1];
+  }
+
+  async dema(period: Period = "3mo", demaPeriod = 20): Promise<number> {
+    const hist = await this._getTechnicalHistory(period);
+    if (hist.length === 0) return NaN;
+    const series = calculateDEMA(hist, demaPeriod);
+    return series[series.length - 1];
+  }
+
+  async tema(period: Period = "3mo", temaPeriod = 20): Promise<number> {
+    const hist = await this._getTechnicalHistory(period);
+    if (hist.length === 0) return NaN;
+    const series = calculateTEMA(hist, temaPeriod);
+    return series[series.length - 1];
+  }
+
+  async heikinAshi(
+    period: Period = "1mo",
+    interval: Interval = "1d",
+  ): Promise<OHLCVData[]> {
+    const hist = await this._getTechnicalHistory(period, interval);
+    if (hist.length === 0) return [];
+    return calculateHeikinAshi(hist);
   }
 }

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { APIError } from "~/exceptions";
+import { APIError, DataNotAvailableError } from "~/exceptions";
 import {
   AGGREGATION,
   clearEVDSKey,
@@ -182,7 +182,9 @@ export class EVDSSeries {
     if (this._infoCache) return this._infoCache;
     const located = await this._provider.findSeries(this._codeUser);
     if (!located)
-      throw new APIError(`EVDS series not found: ${this._codeUser}`);
+      throw new DataNotAvailableError(
+        `EVDS series not found: ${this._codeUser}`,
+      );
 
     const info = { ...located };
     info.SERIE_CODE = denormalizeCode(info.SERIE_CODE || this._codeUser);
@@ -274,7 +276,7 @@ export class EVDSSeries {
       freq,
       options.aggregation || "avg",
       options.formula || "level",
-      options.decimals || 2,
+      options.decimals ?? 2,
       0,
       "json",
       options.decimalSeparator || ".",
@@ -501,7 +503,7 @@ export class EVDS {
       startStr,
       endStr,
       options.frequency,
-      options.decimals || 2,
+      options.decimals ?? 2,
     );
 
     let rows: any[] = [];
@@ -606,7 +608,7 @@ export async function evdsDownload(
     options.frequency || "monthly",
     options.aggregation || "avg",
     options.formula || "level",
-    options.decimals || 2,
+    options.decimals ?? 2,
     0,
     "json",
     options.decimalSeparator || ".",
@@ -628,7 +630,9 @@ export async function evdsDownload(
 
 export {
   AGGREGATION,
+  APIError,
   clearEVDSKey,
+  DataNotAvailableError,
   EVDSProvider,
   FORMULA,
   FREQUENCY,

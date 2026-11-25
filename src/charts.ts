@@ -60,3 +60,8 @@ export function calculateHeikinAshi(data: OHLCVData[] | null): OHLCVData[] {
 
   return result;
 }
+
+/**
+ * Alias matching borsapy's `calculate_heikin_ashi_vectorized`.
+ */
+export const calculateHeikinAshiVectorized = calculateHeikinAshi;

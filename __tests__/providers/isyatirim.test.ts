@@ -146,4 +146,36 @@ describe("IsYatirimProvider", () => {
       }),
     );
   });
+
+  describe("Financial statement itemCode prefix filtering (v0.8.2 parity)", () => {
+    it("filters balance_sheet (1xxx+2xxx), income_stmt (3xxx), and cashflow (4xxx)", () => {
+      const samplePayload = {
+        value: [
+          { itemCode: "1A", itemDescTr: "Dönen Varlıklar", value1: 100 },
+          { itemCode: "2A", itemDescTr: "Kısa Vadeli Yükümlülükler", value1: 50 },
+          { itemCode: "3A", itemDescTr: "Satış Gelirleri", value1: 200 },
+          { itemCode: "4A", itemDescTr: "İşletme Faaliyetlerinden Nakit Akışları", value1: 40 },
+        ],
+      };
+      const periods = [{ year: 2024, period: 12 }];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const parse = (provider as any)._parseFinancialResponse.bind(provider);
+
+      const bs = parse(samplePayload, periods, false, "balance_sheet");
+      expect(bs.map((r: Record<string, unknown>) => r.Item)).toEqual([
+        "Dönen Varlıklar",
+        "Kısa Vadeli Yükümlülükler",
+      ]);
+
+      const is = parse(samplePayload, periods, false, "income_stmt");
+      expect(is.map((r: Record<string, unknown>) => r.Item)).toEqual([
+        "Satış Gelirleri",
+      ]);
+
+      const cf = parse(samplePayload, periods, false, "cashflow");
+      expect(cf.map((r: Record<string, unknown>) => r.Item)).toEqual([
+        "İşletme Faaliyetlerinden Nakit Akışları",
+      ]);
+    });
+  });
 });

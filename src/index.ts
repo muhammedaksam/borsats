@@ -3,6 +3,10 @@ export { Ticker, FastInfo, EnrichedInfo, computeAdjClose } from "~/ticker";
 
 export * from "~/fund";
 export { Fund } from "~/fund";
+export {
+  ASSET_TYPE_LABELS,
+  ASSET_NAME_STANDARDIZATION,
+} from "~/providers/tefas";
 
 export * from "~/screener";
 export { Screener } from "~/screener";
@@ -22,20 +26,45 @@ export { FX } from "~/fx";
 export * from "~/market";
 // Market is a module with functions, no single class to export
 
+export * from "~/multi";
+export { Tickers, download } from "~/multi";
+
 export * from "~/portfolio";
 export { Portfolio } from "~/portfolio";
 
 export * from "~/technical";
-export { TechnicalAnalyzer } from "~/technical";
+export { TechnicalAnalyzer, TechnicalMixin } from "~/technical";
 
 export * from "~/types";
 
 export * from "~/charts";
 
+export * from "~/twitter";
+export {
+  TwitterProvider,
+  getTwitterProvider,
+  TWITTER_PERIOD_DAYS,
+} from "~/providers/twitter";
+
+export {
+  KAPHoldingsProvider,
+  getKAPHoldingsProvider,
+  PORTFOLIO_REPORT_DISCLOSURE_TYPE,
+  OPENROUTER_MODEL,
+  type FundHolding,
+  type FundHoldingRow,
+  type KAPFundDisclosure,
+} from "~/providers/kap-holdings";
+
 export * from "~/providers/pine-facade";
 export * from "~/providers/tradingview-etf";
 export * from "~/providers/tradingview-scanner";
 export * from "~/providers/tradingview-search";
+export {
+  setTradingViewAuth,
+  getTradingViewAuth,
+  clearTradingViewAuth,
+} from "~/providers/tradingview";
 
 export * from "~/backtest";
 export { BacktestEngine } from "~/backtest";

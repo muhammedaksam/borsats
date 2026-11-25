@@ -306,27 +306,31 @@ export async function screenStocks(options: {
     await screener.addFilter("roe", options.roe_min, options.roe_max);
   }
 
-  // Handle other keys matching CRITERIA_DEFAULTS suffixes like _min, _max
+  // Handle other keys matching CRITERIA_DEFAULTS suffixes like _min and _max
+  const explicitCriteria = new Set([
+    "market_cap",
+    "pe",
+    "pb",
+    "dividend_yield",
+    "upside_potential",
+    "net_margin",
+    "roe",
+  ]);
+  const dynamicCriteria = new Set<string>();
   for (const key of Object.keys(options)) {
     if (key.endsWith("_min")) {
-      const criteria = key.replace("_min", "");
-      if (Screener.CRITERIA_DEFAULTS[criteria]) {
-        // already handled explicit ones?
-        if (
-          criteria === "market_cap" ||
-          criteria === "pe" ||
-          criteria === "pb" ||
-          criteria === "dividend_yield" ||
-          criteria === "upside_potential" ||
-          criteria === "net_margin" ||
-          criteria === "roe"
-        )
-          continue;
-        await screener.addFilter(
-          criteria,
-          options[key] as number,
-          options[criteria + "_max"] as number,
-        );
+      dynamicCriteria.add(key.slice(0, -4));
+    } else if (key.endsWith("_max")) {
+      dynamicCriteria.add(key.slice(0, -4));
+    }
+  }
+  for (const criteria of dynamicCriteria) {
+    if (explicitCriteria.has(criteria)) continue;
+    if (Screener.CRITERIA_DEFAULTS[criteria]) {
+      const minVal = options[`${criteria}_min`] as number | undefined;
+      const maxVal = options[`${criteria}_max`] as number | undefined;
+      if (minVal !== undefined || maxVal !== undefined) {
+        await screener.addFilter(criteria, minVal, maxVal);
       }
     }
   }

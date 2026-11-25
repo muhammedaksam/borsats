@@ -183,12 +183,12 @@ describe("TEFASProvider (Mocked) — Coverage Boost", () => {
       jest.restoreAllMocks();
     });
 
-    test("fetches fund detail via v2 API with camelCase mapping", async () => {
+    test("fetches fund detail via v2 API with camelCase mapping and profile", async () => {
       let callCount = 0;
       jest.spyOn(axios, "create").mockReturnValue({
-        post: jest.fn().mockImplementation(() => {
+        post: jest.fn().mockImplementation((url: string) => {
           callCount++;
-          if (callCount === 1) {
+          if (url.includes("fonBilgiGetir")) {
             return Promise.resolve({
               status: 200,
               headers: { "content-type": "application/json" },
@@ -205,6 +205,30 @@ describe("TEFASProvider (Mocked) — Coverage Boost", () => {
                     kategoriDerece: 3,
                     kategoriFonSay: 50,
                     pazarPayi: 2.5,
+                  },
+                ],
+              },
+            });
+          }
+          if (url.includes("fonProfilBilgiGetir")) {
+            return Promise.resolve({
+              status: 200,
+              headers: { "content-type": "application/json" },
+              data: {
+                resultList: [
+                  {
+                    fonKodu: "ABC",
+                    fonUnvan: "ABC Fonu",
+                    isinKodu: "TRMAF1WWWWW4",
+                    sonIsSaat: "17:30",
+                    basIsSaat: "09:00",
+                    minAlis: 1,
+                    minSatis: 1,
+                    fonGeriAlisValor: 1,
+                    fonSatisValor: 2,
+                    kapLink: "https://www.kap.org.tr/tr/fon-bilgileri/genel/abc",
+                    tefasDurum: "TEFAS'ta işlem görüyor",
+                    riskDegeri: "7",
                   },
                 ],
               },
@@ -248,6 +272,7 @@ describe("TEFASProvider (Mocked) — Coverage Boost", () => {
       const provider = createProvider();
       const detail = await provider.getFundDetail("abc");
 
+      expect(callCount).toBe(3);
       expect(detail.fund_code).toBe("ABC");
       expect(detail.name).toBe("ABC Fonu");
       expect(detail.price).toBe(12.5);
@@ -255,6 +280,7 @@ describe("TEFASProvider (Mocked) — Coverage Boost", () => {
       expect(detail.investor_count).toBe(300);
       expect(detail.category).toBe("Hisse");
       expect(detail.fund_type).toBe("Hisse Senedi");
+      expect(detail.fund_class).toBe("YAT");
       expect(detail.risk_value).toBe(7);
       expect(detail.return_1m).toBe(1.2);
       expect(detail.return_3m).toBe(4.5);
@@ -267,21 +293,82 @@ describe("TEFASProvider (Mocked) — Coverage Boost", () => {
       expect(detail.category_rank).toBe(3);
       expect(detail.category_fund_count).toBe(50);
       expect(detail.market_share).toBe(2.5);
+      // Restored from fonProfilBilgiGetir (v0.9.0+)
+      expect(detail.isin).toBe("TRMAF1WWWWW4");
+      expect(detail.last_trading_time).toBe("17:30");
+      expect(detail.first_trading_time).toBe("09:00");
+      expect(detail.buy_valor).toBe(1);
+      expect(detail.sell_valor).toBe(2);
+      expect(detail.kap_link).toBe(
+        "https://www.kap.org.tr/tr/fon-bilgileri/genel/abc",
+      );
+      expect(detail.tefas_status).toBe("TEFAS'ta işlem görüyor");
       // v2-unavailable fields
       expect(detail.date).toBeUndefined();
       expect(detail.founder).toBeUndefined();
       expect(detail.manager).toBeUndefined();
       expect(detail.weekly_return).toBeUndefined();
-      expect(detail.isin).toBeUndefined();
       expect(detail.allocation).toBeUndefined();
+    });
+
+    test("falls back to EMK when fund not found in YAT returns list", async () => {
+      jest.spyOn(axios, "create").mockReturnValue({
+        post: jest
+          .fn()
+          .mockImplementation((url: string, body: Record<string, unknown>) => {
+            if (url.includes("fonBilgiGetir")) {
+              return Promise.resolve({
+                status: 200,
+                headers: { "content-type": "application/json" },
+                data: {
+                  resultList: [{ fonKodu: "AAJ", fonUnvan: "EMK Fonu", sonFiyat: 5 }],
+                },
+              });
+            }
+            if (url.includes("fonGetiriBazliBilgiGetir")) {
+              if (body.fonTipi === "YAT") {
+                return Promise.resolve({
+                  status: 200,
+                  headers: { "content-type": "application/json" },
+                  data: { resultList: [{ fonKodu: "OTHER" }] },
+                });
+              }
+              return Promise.resolve({
+                status: 200,
+                headers: { "content-type": "application/json" },
+                data: {
+                  resultList: [
+                    { fonKodu: "AAJ", fonTurAciklama: "Emeklilik", getiri1y: 32.5 },
+                  ],
+                },
+              });
+            }
+            return Promise.resolve({
+              status: 200,
+              headers: { "content-type": "application/json" },
+              data: { resultList: [] },
+            });
+          }),
+        get: jest.fn(),
+        defaults: { headers: { common: {} } },
+        interceptors: {
+          request: { use: jest.fn() },
+          response: { use: jest.fn() },
+        },
+      } as unknown as ReturnType<typeof axios.create>);
+
+      const provider = createProvider();
+      const detail = await provider.getFundDetail("AAJ", "YAT");
+      expect(detail.fund_class).toBe("EMK");
+      expect(detail.return_1y).toBe(32.5);
     });
 
     test("returns cached result on second call", async () => {
       let callCount = 0;
       jest.spyOn(axios, "create").mockReturnValue({
-        post: jest.fn().mockImplementation(() => {
+        post: jest.fn().mockImplementation((url: string) => {
           callCount++;
-          if (callCount === 1) {
+          if (url.includes("fonBilgiGetir")) {
             return Promise.resolve({
               status: 200,
               headers: { "content-type": "application/json" },
@@ -298,6 +385,13 @@ describe("TEFASProvider (Mocked) — Coverage Boost", () => {
                   },
                 ],
               },
+            });
+          }
+          if (url.includes("fonProfilBilgiGetir")) {
+            return Promise.resolve({
+              status: 200,
+              headers: { "content-type": "application/json" },
+              data: { resultList: [{ fonKodu: "TST", isinKodu: "TR000" }] },
             });
           }
           return Promise.resolve({
@@ -326,7 +420,7 @@ describe("TEFASProvider (Mocked) — Coverage Boost", () => {
       const provider = createProvider();
       await provider.getFundDetail("TST");
       await provider.getFundDetail("TST");
-      expect(callCount).toBe(2);
+      expect(callCount).toBe(3);
     });
 
     test("throws DataNotAvailableError when infoList is empty", async () => {
@@ -725,11 +819,99 @@ describe("TEFASProvider (Mocked) — Coverage Boost", () => {
   });
 
   // =========================================================================
-  // Helper methods (via public API)
+  // TEFAS v2 History (fonFiyatBilgiGetir) & Allocation (dagilimSiraliGetirT)
   // =========================================================================
 
-  describe("_formatDateISO (via getHistory)", () => {
-    test("produces correct cache key with dates", async () => {
+  describe("_resolvePeriyod & getHistory (v2 fonFiyatBilgiGetir)", () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    const V2_HISTORY_ROWS = [
+      { fonKodu: "AAK", fonUnvan: "AK PORTFOY", tarih: "2026-04-01", fiyat: 35.1 },
+      { fonKodu: "AAK", fonUnvan: "AK PORTFOY", tarih: "2026-04-15", fiyat: 35.3 },
+      { fonKodu: "AAK", fonUnvan: "AK PORTFOY", tarih: "2026-04-30", fiyat: 35.21 },
+    ];
+
+    test("maps period strings to TEFAS v2 periyod codes", () => {
+      const provider = createProvider();
+      const expected: Array<[string, number]> = [
+        ["1d", 13],
+        ["5d", 13],
+        ["1mo", 1],
+        ["3mo", 3],
+        ["6mo", 6],
+        ["ytd", 0],
+        ["1y", 12],
+        ["3y", 36],
+        ["5y", 60],
+        ["max", 60],
+        ["unknown", 1],
+      ];
+      for (const [label, code] of expected) {
+        expect(provider._resolvePeriyod(label)).toBe(code);
+      }
+    });
+
+    test("fetches history via fonFiyatBilgiGetir with periyod enum and caches by periyod", async () => {
+      const postMock = jest.fn().mockResolvedValue({
+        status: 200,
+        headers: { "content-type": "application/json" },
+        data: { resultList: V2_HISTORY_ROWS },
+      });
+      jest.spyOn(axios, "create").mockReturnValue({
+        post: postMock,
+        get: jest.fn(),
+        defaults: { headers: { common: {} } },
+        interceptors: {
+          request: { use: jest.fn() },
+          response: { use: jest.fn() },
+        },
+      } as unknown as ReturnType<typeof axios.create>);
+
+      const provider = createProvider();
+      const hist = await provider.getHistory({ fundCode: "aak", period: "3y" });
+      expect(hist.length).toBe(3);
+      expect(hist[0].price).toBe(35.1);
+      expect(Number.isNaN(hist[0].fundSize)).toBe(true);
+      expect(hist[0].investors).toBe(0);
+      expect(postMock).toHaveBeenCalledTimes(1);
+      expect(postMock.mock.calls[0][0]).toContain("fonFiyatBilgiGetir");
+      expect(postMock.mock.calls[0][1]).toEqual({
+        fonKodu: "AAK",
+        dil: "TR",
+        periyod: 36,
+      });
+
+      // Second call hits periyod cache
+      await provider.getHistory({ fundCode: "AAK", period: "3y" });
+      expect(postMock).toHaveBeenCalledTimes(1);
+    });
+
+    test("filters history client-side for explicit start/end dates", async () => {
+      jest.spyOn(axios, "create").mockReturnValue({
+        post: jest.fn().mockResolvedValue({
+          status: 200,
+          headers: { "content-type": "application/json" },
+          data: { resultList: V2_HISTORY_ROWS },
+        }),
+        get: jest.fn(),
+        defaults: { headers: { common: {} } },
+        interceptors: {
+          request: { use: jest.fn() },
+          response: { use: jest.fn() },
+        },
+      } as unknown as ReturnType<typeof axios.create>);
+
+      const provider = createProvider();
+      const hist = await provider.getHistory({
+        fundCode: "AAK",
+        start: new Date("2026-04-10"),
+        end: new Date("2026-04-20"),
+      });
+      expect(hist.length).toBe(1);
+      expect(hist[0].price).toBe(35.3);
+    });
+
+    test("throws DataNotAvailableError when empty or filtered to empty", async () => {
       jest.spyOn(axios, "create").mockReturnValue({
         post: jest.fn().mockResolvedValue({
           status: 200,
@@ -745,419 +927,9 @@ describe("TEFASProvider (Mocked) — Coverage Boost", () => {
       } as unknown as ReturnType<typeof axios.create>);
 
       const provider = createProvider();
-      await provider.getHistory({
-        fundCode: "TST",
-        start: new Date("2024-03-15"),
-        end: new Date("2024-03-20"),
-      });
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const postCalls = (provider as any).client.post.mock.calls;
-      expect(postCalls.length).toBeGreaterThanOrEqual(1);
-    });
-  });
-
-  describe("_formatDateTR (via getAllocation)", () => {
-    test("produces DD.MM.YYYY format in request body", async () => {
-      jest.spyOn(axios, "create").mockReturnValue({
-        post: jest.fn().mockResolvedValue({
-          status: 200,
-          headers: { "content-type": "application/json" },
-          data: {
-            data: [
-              {
-                TARIH: 1710000000000,
-                HB: 50,
-                HS: 30,
-                D: 20,
-              },
-            ],
-          },
-        }),
-        get: jest.fn(),
-        defaults: { headers: { common: {} } },
-        interceptors: {
-          request: { use: jest.fn() },
-          response: { use: jest.fn() },
-        },
-      } as unknown as ReturnType<typeof axios.create>);
-
-      const provider = createProvider();
-      const allocation = await provider.getAllocation(
-        "TST",
-        new Date("2024-01-15"),
-        new Date("2024-02-15"),
-      );
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const postCalls = (provider as any).client.post.mock.calls;
-      const body = postCalls[0][1] as URLSearchParams;
-      expect(body.get("bastarih")).toMatch(/^\d{2}\.\d{2}\.\d{4}$/);
-      expect(body.get("bittarih")).toMatch(/^\d{2}\.\d{2}\.\d{4}$/);
-
-      expect(allocation.length).toBeGreaterThan(0);
-    });
-  });
-
-  // =========================================================================
-  // _safeJson — malformed JSON string body
-  // =========================================================================
-
-  describe("_safeJson edge cases", () => {
-    test("throws on malformed JSON string with json content-type", () => {
-      const response = {
-        status: 200,
-        headers: { "content-type": "application/json" },
-        data: "{bad json",
-      };
-      expect(() =>
-        TEFASProvider._safeJson(response as any, "test"),
-      ).toThrow("malformed JSON");
-    });
-
-    test("parses valid JSON string body", () => {
-      const response = {
-        status: 200,
-        headers: { "content-type": "application/json" },
-        data: '{"ok":true}',
-      };
-      expect(TEFASProvider._safeJson(response as any, "test")).toEqual({
-        ok: true,
-      });
-    });
-  });
-
-  // =========================================================================
-  // _postJson — retry with backoff
-  // =========================================================================
-
-  describe("_postJson retry logic", () => {
-    afterEach(() => jest.restoreAllMocks());
-
-    test("retries on APIError and eventually succeeds", async () => {
-      let callCount = 0;
-      const provider = createProvider();
-      (provider as any).client.post = jest.fn().mockImplementation(() => {
-        callCount++;
-        if (callCount < 3) {
-          return Promise.resolve({
-            status: 200,
-            headers: { "content-type": "text/html" },
-            data: "",
-          });
-        }
-        return Promise.resolve({
-          status: 200,
-          headers: { "content-type": "application/json" },
-          data: { ok: true },
-        });
-      });
-
-      const result = await provider._postJson(
-        "http://example.com",
-        "data",
-        "test",
-      );
-      expect(result).toEqual({ ok: true });
-      expect(callCount).toBe(3);
-    });
-
-    test("throws last APIError after all retries fail", async () => {
-      const provider = createProvider();
-      (provider as any).client.post = jest.fn().mockResolvedValue({
-        status: 200,
-        headers: { "content-type": "text/html" },
-        data: "",
-      });
-
       await expect(
-        provider._postJson("http://example.com", "data", "test"),
-      ).rejects.toThrow("empty response");
-      expect((provider as any).client.post).toHaveBeenCalledTimes(3);
-    });
-
-    test("re-throws non-APIError immediately", async () => {
-      const provider = createProvider();
-      (provider as any).client.post = jest.fn().mockResolvedValue({
-        status: 200,
-        headers: { "content-type": "application/json" },
-        data: "{bad",
-      });
-
-      await expect(
-        provider._postJson("http://example.com", "d", "test"),
-      ).rejects.toThrow("malformed JSON");
-    });
-  });
-
-  // =========================================================================
-  // _postJsonV2 — unexpected data shape (non-object)
-  // =========================================================================
-
-  describe("_postJsonV2 unexpected data shape", () => {
-    afterEach(() => jest.restoreAllMocks());
-
-    test("wraps non-object truthy data in array", async () => {
-      const provider = createProvider();
-      jest
-        .spyOn(TEFASProvider, "_safeJson")
-        .mockReturnValue([{ a: 1 }]);
-      (provider as any).client.post = jest.fn().mockResolvedValue({
-        status: 200,
-        headers: { "content-type": "application/json" },
-        data: [{ a: 1 }],
-      });
-
-      const result = await provider._postJsonV2("ep", {}, "label");
-      // Array is not a plain object, so it hits the "unexpected shape" branch
-      // and gets wrapped: [data as Record<string, unknown>]
-      expect(result).toEqual([[{ a: 1 }]]);
-    });
-
-    test("returns empty array for falsy non-object data", async () => {
-      const provider = createProvider();
-      jest.spyOn(TEFASProvider, "_safeJson").mockReturnValue(null);
-      (provider as any).client.post = jest.fn().mockResolvedValue({
-        status: 200,
-        headers: { "content-type": "application/json" },
-        data: null,
-      });
-
-      const result = await provider._postJsonV2("ep", {}, "label");
-      expect(result).toEqual([]);
-    });
-  });
-
-  // =========================================================================
-  // getFundDetail — generic error wrapping
-  // =========================================================================
-
-  describe("getFundDetail generic error", () => {
-    afterEach(() => jest.restoreAllMocks());
-
-    test("wraps unexpected errors in APIError", async () => {
-      jest.spyOn(axios, "create").mockReturnValue({
-        post: jest.fn().mockRejectedValue(new Error("network down")),
-        get: jest.fn(),
-        defaults: { headers: { common: {} } },
-        interceptors: {
-          request: { use: jest.fn() },
-          response: { use: jest.fn() },
-        },
-      } as unknown as ReturnType<typeof axios.create>);
-
-      const provider = createProvider();
-      await expect(provider.getFundDetail("XYZ")).rejects.toThrow(
-        "Failed to fetch fund detail for XYZ",
-      );
-    });
-  });
-
-  // =========================================================================
-  // getHistory — period mapping & chunked path
-  // =========================================================================
-
-  describe("getHistory coverage", () => {
-    afterEach(() => jest.restoreAllMocks());
-
-    function mockLegacyPost() {
-      return jest.fn().mockResolvedValue({
-        status: 200,
-        headers: { "content-type": "application/json" },
-        data: {
-          data: [
-            {
-              TARIH: 1710000000000,
-              FIYAT: 10.5,
-              PORTFOYBUYUKLUK: 1000000,
-              KISISAYISI: 50,
-            },
-          ],
-        },
-      });
-    }
-
-    test("uses period mapping when no start date provided", async () => {
-      jest.spyOn(axios, "create").mockReturnValue({
-        post: mockLegacyPost(),
-        get: jest.fn(),
-        defaults: { headers: { common: {} } },
-        interceptors: {
-          request: { use: jest.fn() },
-          response: { use: jest.fn() },
-        },
-      } as unknown as ReturnType<typeof axios.create>);
-
-      const provider = createProvider();
-      for (const period of ["1d", "5d", "3mo", "6mo", "1y", "3y", "5y", "max", "unknown"]) {
-        const result = await provider.getHistory({
-          fundCode: "TST",
-          period,
-        });
-        expect(result).toBeDefined();
-      }
-    });
-
-    test("uses chunked fetching for large date ranges", async () => {
-      const postMock = mockLegacyPost();
-      jest.spyOn(axios, "create").mockReturnValue({
-        post: postMock,
-        get: jest.fn(),
-        defaults: { headers: { common: {} } },
-        interceptors: {
-          request: { use: jest.fn() },
-          response: { use: jest.fn() },
-        },
-      } as unknown as ReturnType<typeof axios.create>);
-
-      const provider = createProvider();
-      const end = new Date("2024-06-01");
-      const start = new Date("2024-01-01"); // >90 days
-      const result = await provider.getHistory({
-        fundCode: "TST",
-        start,
-        end,
-      });
-      expect(result.length).toBeGreaterThan(0);
-      expect(postMock).toHaveBeenCalledTimes(2); // 2 chunks
-    });
-  });
-
-  // =========================================================================
-  // _getHistoryChunked — WAF break & dedup & empty
-  // =========================================================================
-
-  describe("_getHistoryChunked", () => {
-    afterEach(() => jest.restoreAllMocks());
-
-    test("breaks on WAF error, deduplicates, and sorts collected data", async () => {
-      let callCount = 0;
-      jest.spyOn(axios, "create").mockReturnValue({
-        post: jest.fn().mockImplementation(() => {
-          callCount++;
-          if (callCount <= 2) {
-            // Return same timestamp in both chunks to test deduplication
-            return Promise.resolve({
-              status: 200,
-              headers: { "content-type": "application/json" },
-              data: {
-                data: [
-                  { TARIH: 1710000000000, FIYAT: 10, PORTFOYBUYUKLUK: 100, KISISAYISI: 5 },
-                  { TARIH: 1709000000000, FIYAT: 9, PORTFOYBUYUKLUK: 90, KISISAYISI: 4 },
-                ],
-              },
-            });
-          }
-          // WAF block
-          return Promise.resolve({
-            status: 200,
-            headers: { "content-type": "text/html" },
-            data: "WAF block",
-          });
-        }),
-        get: jest.fn(),
-        defaults: { headers: { common: {} } },
-        interceptors: {
-          request: { use: jest.fn() },
-          response: { use: jest.fn() },
-        },
-      } as unknown as ReturnType<typeof axios.create>);
-
-      const provider = createProvider();
-      const result = await provider.getHistory({
-        fundCode: "TST",
-        start: new Date("2024-01-01"),
-        end: new Date("2024-06-01"),
-      });
-      // Dedup should collapse identical timestamps, sort by date asc
-      expect(result.length).toBe(2);
-      expect(result[0].date.getTime()).toBeLessThan(result[1].date.getTime());
-    });
-
-    test("throws DataNotAvailableError when no records collected", async () => {
-      jest.spyOn(axios, "create").mockReturnValue({
-        post: jest.fn().mockResolvedValue({
-          status: 200,
-          headers: { "content-type": "application/json" },
-          data: { data: [] },
-        }),
-        get: jest.fn(),
-        defaults: { headers: { common: {} } },
-        interceptors: {
-          request: { use: jest.fn() },
-          response: { use: jest.fn() },
-        },
-      } as unknown as ReturnType<typeof axios.create>);
-
-      const provider = createProvider();
-      await expect(
-        provider.getHistory({
-          fundCode: "NOPE",
-          start: new Date("2024-01-01"),
-          end: new Date("2024-06-01"),
-        }),
+        provider.getHistory({ fundCode: "ZZZ", period: "1mo" }),
       ).rejects.toThrow("No history for fund");
-    });
-  });
-
-  // =========================================================================
-  // _fetchHistoryChunk — parsing & error wrapping
-  // =========================================================================
-
-  describe("_fetchHistoryChunk", () => {
-    afterEach(() => jest.restoreAllMocks());
-
-    test("returns empty array when result has no data", async () => {
-      jest.spyOn(axios, "create").mockReturnValue({
-        post: jest.fn().mockResolvedValue({
-          status: 200,
-          headers: { "content-type": "application/json" },
-          data: {},
-        }),
-        get: jest.fn(),
-        defaults: { headers: { common: {} } },
-        interceptors: {
-          request: { use: jest.fn() },
-          response: { use: jest.fn() },
-        },
-      } as unknown as ReturnType<typeof axios.create>);
-
-      const provider = createProvider();
-      const result = await provider.getHistory({
-        fundCode: "TST",
-        start: new Date("2024-03-01"),
-        end: new Date("2024-03-10"),
-      });
-      expect(result).toEqual([]);
-    });
-
-    test("skips items with invalid timestamps", async () => {
-      jest.spyOn(axios, "create").mockReturnValue({
-        post: jest.fn().mockResolvedValue({
-          status: 200,
-          headers: { "content-type": "application/json" },
-          data: {
-            data: [
-              { TARIH: 0, FIYAT: 1, PORTFOYBUYUKLUK: 1, KISISAYISI: 1 },
-              { TARIH: 1710000000000, FIYAT: 10, PORTFOYBUYUKLUK: 100, KISISAYISI: 5 },
-            ],
-          },
-        }),
-        get: jest.fn(),
-        defaults: { headers: { common: {} } },
-        interceptors: {
-          request: { use: jest.fn() },
-          response: { use: jest.fn() },
-        },
-      } as unknown as ReturnType<typeof axios.create>);
-
-      const provider = createProvider();
-      const result = await provider.getHistory({
-        fundCode: "TST",
-        start: new Date("2024-03-01"),
-        end: new Date("2024-03-10"),
-      });
-      expect(result.length).toBe(1);
     });
 
     test("wraps non-APIError in APIError", async () => {
@@ -1173,28 +945,39 @@ describe("TEFASProvider (Mocked) — Coverage Boost", () => {
 
       const provider = createProvider();
       await expect(
-        provider.getHistory({
-          fundCode: "TST",
-          start: new Date("2024-03-01"),
-          end: new Date("2024-03-10"),
-        }),
-      ).rejects.toThrow("Failed chunk fetch");
+        provider.getHistory({ fundCode: "TST", period: "1mo" }),
+      ).rejects.toThrow("Failed to fetch history for TST");
     });
   });
 
   // =========================================================================
-  // getAllocation — full coverage
+  // getAllocation & getAllocationHistory (v2 dagilimSiraliGetirT, v0.11.0+)
   // =========================================================================
 
-  describe("getAllocation coverage", () => {
+  describe("getAllocation & getAllocationHistory (v2 dagilimSiraliGetirT)", () => {
     afterEach(() => jest.restoreAllMocks());
 
-    test("throws DataNotAvailableError when no data field", async () => {
+    const TPC_ROW = {
+      fonKodu: "TPC",
+      fonUnvan: "TEB PORTFÖY KIYMETLİ MADENLER FON SEPETİ FONU",
+      tarih: "2026-08-07",
+      bb: 0,
+      byf: 15.86,
+      d: 0,
+      hs: 1.45,
+      tpp: 3.27,
+      vmtl: 1.69,
+      ybyf: 47.33,
+      yyf: 30.4,
+      bilFiyat: "1786114823099",
+    };
+
+    test("parses weights, drops zero/meta, attaches code & verified labels, sorts by magnitude", async () => {
       jest.spyOn(axios, "create").mockReturnValue({
         post: jest.fn().mockResolvedValue({
           status: 200,
           headers: { "content-type": "application/json" },
-          data: {},
+          data: { resultList: [TPC_ROW] },
         }),
         get: jest.fn(),
         defaults: { headers: { common: {} } },
@@ -1205,45 +988,38 @@ describe("TEFASProvider (Mocked) — Coverage Boost", () => {
       } as unknown as ReturnType<typeof axios.create>);
 
       const provider = createProvider();
-      await expect(
-        provider.getAllocation("TST", new Date("2024-01-01"), new Date("2024-01-10")),
-      ).rejects.toThrow("No allocation data");
-    });
+      const alloc = await provider.getAllocation("TPC");
 
-    test("sorts records by date desc then weight desc", async () => {
-      jest.spyOn(axios, "create").mockReturnValue({
-        post: jest.fn().mockResolvedValue({
-          status: 200,
-          headers: { "content-type": "application/json" },
-          data: {
-            data: [
-              { TARIH: 1710000000000, FONKODU: "X", FONUNVAN: "X", BilFiyat: 1, HS: 30, HB: 50 },
-              { TARIH: 1710100000000, FONKODU: "X", FONUNVAN: "X", BilFiyat: 1, D: 20 },
-            ],
-          },
-        }),
-        get: jest.fn(),
-        defaults: { headers: { common: {} } },
-        interceptors: {
-          request: { use: jest.fn() },
-          response: { use: jest.fn() },
-        },
-      } as unknown as ReturnType<typeof axios.create>);
-
-      const provider = createProvider();
-      const result = await provider.getAllocation(
-        "TST",
-        new Date("2024-01-01"),
-        new Date("2024-03-15"),
+      expect(alloc.map((a) => a.code)).toEqual([
+        "ybyf",
+        "yyf",
+        "byf",
+        "tpp",
+        "vmtl",
+        "hs",
+      ]);
+      expect(alloc[0].asset_type).toBe("Yabancı Borsa Yatırım Fonları");
+      expect(alloc[0].asset_name).toBe("Foreign ETFs");
+      expect(alloc.find((a) => a.code === "tpp")?.asset_type).toBe(
+        "Takasbank Para Piyasası",
       );
-      expect(result.length).toBe(3);
-      // Later date first
-      expect(result[0].date.getTime()).toBeGreaterThan(result[1].date.getTime());
+      expect(alloc.find((a) => a.code === "bilFiyat")).toBeUndefined();
     });
 
-    test("wraps non-DataNotAvailableError in APIError", async () => {
+    test("preserves negative weights (e.g. leveraged repo leg) and null labels for unverified codes", async () => {
+      const row = {
+        fonKodu: "ABG",
+        tarih: "2026-08-07",
+        hs: 114.14,
+        r: -14.14,
+        gas: 4.95,
+      };
       jest.spyOn(axios, "create").mockReturnValue({
-        post: jest.fn().mockRejectedValue(new TypeError("network")),
+        post: jest.fn().mockResolvedValue({
+          status: 200,
+          headers: { "content-type": "application/json" },
+          data: { resultList: [row] },
+        }),
         get: jest.fn(),
         defaults: { headers: { common: {} } },
         interceptors: {
@@ -1253,96 +1029,154 @@ describe("TEFASProvider (Mocked) — Coverage Boost", () => {
       } as unknown as ReturnType<typeof axios.create>);
 
       const provider = createProvider();
+      const alloc = await provider.getAllocation("ABG");
+      expect(alloc[0].code).toBe("hs");
+      expect(alloc[1].code).toBe("r");
+      expect(alloc[1].weight).toBe(-14.14);
+      const gas = alloc.find((a) => a.code === "gas");
+      expect(gas?.asset_type).toBeNull();
+      expect(gas?.asset_name).toBeNull();
+    });
+
+    test("snapshot keeps only newest date and probes YAT -> EMK on Index 0 out of bounds", async () => {
+      const seenTypes: string[] = [];
+      jest.spyOn(axios, "create").mockReturnValue({
+        post: jest
+          .fn()
+          .mockImplementation((_url: string, body: Record<string, unknown>) => {
+            seenTypes.push(String(body.fonTipi));
+            if (body.fonTipi === "YAT") {
+              return Promise.resolve({
+                status: 200,
+                headers: { "content-type": "application/json" },
+                data: {
+                  errorMessage: "Index 0 out of bounds for length 0",
+                  resultList: null,
+                },
+              });
+            }
+            return Promise.resolve({
+              status: 200,
+              headers: { "content-type": "application/json" },
+              data: {
+                resultList: [
+                  { ...TPC_ROW, tarih: "2026-08-05", hs: 9.0 },
+                  TPC_ROW,
+                ],
+              },
+            });
+          }),
+        get: jest.fn(),
+        defaults: { headers: { common: {} } },
+        interceptors: {
+          request: { use: jest.fn() },
+          response: { use: jest.fn() },
+        },
+      } as unknown as ReturnType<typeof axios.create>);
+
+      const provider = createProvider();
+      const alloc = await provider.getAllocation("AAJ");
+      expect(seenTypes).toEqual(["YAT", "EMK"]);
+      const uniqueDates = new Set(alloc.map((a) => a.date.toISOString().slice(0, 10)));
+      expect(Array.from(uniqueDates)).toEqual(["2026-08-07"]);
+    });
+
+    test("splits multi-month range into <=28-day windows without gaps or overlap", async () => {
+      const seenWindows: Array<[string, string]> = [];
+      jest.spyOn(axios, "create").mockReturnValue({
+        post: jest
+          .fn()
+          .mockImplementation((_url: string, body: Record<string, unknown>) => {
+            seenWindows.push([String(body.basTarih), String(body.bitTarih)]);
+            return Promise.resolve({
+              status: 200,
+              headers: { "content-type": "application/json" },
+              data: {
+                resultList: [
+                  {
+                    ...TPC_ROW,
+                    tarih: `2026-0${seenWindows.length + 4}-01`,
+                  },
+                ],
+              },
+            });
+          }),
+        get: jest.fn(),
+        defaults: { headers: { common: {} } },
+        interceptors: {
+          request: { use: jest.fn() },
+          response: { use: jest.fn() },
+        },
+      } as unknown as ReturnType<typeof axios.create>);
+
+      const provider = createProvider();
+      const alloc = await provider.getAllocation(
+        "TPC",
+        new Date("2026-05-01T00:00:00Z"),
+        new Date("2026-07-30T00:00:00Z"),
+        "YAT",
+      );
+      expect(seenWindows.length).toBe(4);
+      expect(seenWindows[0][0]).toBe("20260501");
+      expect(seenWindows[seenWindows.length - 1][1]).toBe("20260730");
+      expect(alloc.length).toBeGreaterThan(0);
+    });
+
+    test("throws DataNotAvailableError when fund not in any universe", async () => {
+      jest.spyOn(axios, "create").mockReturnValue({
+        post: jest.fn().mockResolvedValue({
+          status: 200,
+          headers: { "content-type": "application/json" },
+          data: { resultList: [] },
+        }),
+        get: jest.fn(),
+        defaults: { headers: { common: {} } },
+        interceptors: {
+          request: { use: jest.fn() },
+          response: { use: jest.fn() },
+        },
+      } as unknown as ReturnType<typeof axios.create>);
+
+      const provider = createProvider();
+      await expect(provider.getAllocation("ZZZZ")).rejects.toThrow("ZZZZ");
+    });
+
+    test("getAllocationHistory supports 1w/1mo/2mo/3mo and rejects >91 days or unknown period", async () => {
+      jest.spyOn(axios, "create").mockReturnValue({
+        post: jest.fn().mockResolvedValue({
+          status: 200,
+          headers: { "content-type": "application/json" },
+          data: { resultList: [TPC_ROW] },
+        }),
+        get: jest.fn(),
+        defaults: { headers: { common: {} } },
+        interceptors: {
+          request: { use: jest.fn() },
+          response: { use: jest.fn() },
+        },
+      } as unknown as ReturnType<typeof axios.create>);
+
+      const provider = createProvider();
+      for (const period of ["1w", "1mo", "2mo", "3mo"]) {
+        const res = await provider.getAllocationHistory({
+          fundCode: "TPC",
+          period,
+          fundType: "YAT",
+        });
+        expect(res.length).toBeGreaterThan(0);
+      }
+
       await expect(
-        provider.getAllocation("TST", new Date("2024-01-01"), new Date("2024-01-10")),
-      ).rejects.toThrow("Failed to fetch allocation");
-    });
+        provider.getAllocationHistory({ fundCode: "TPC", period: "1y" }),
+      ).rejects.toThrow("period must be one of");
 
-    test("skips zero-weight and excluded keys", async () => {
-      jest.spyOn(axios, "create").mockReturnValue({
-        post: jest.fn().mockResolvedValue({
-          status: 200,
-          headers: { "content-type": "application/json" },
-          data: {
-            data: [
-              { TARIH: 1710000000000, FONKODU: "X", FONUNVAN: "Y", BilFiyat: 5, HS: 0, D: 10 },
-            ],
-          },
+      await expect(
+        provider.getAllocationHistory({
+          fundCode: "TPC",
+          start: new Date("2025-01-01"),
+          end: new Date("2025-06-01"),
         }),
-        get: jest.fn(),
-        defaults: { headers: { common: {} } },
-        interceptors: {
-          request: { use: jest.fn() },
-          response: { use: jest.fn() },
-        },
-      } as unknown as ReturnType<typeof axios.create>);
-
-      const provider = createProvider();
-      const result = await provider.getAllocation("TST", new Date("2024-01-01"), new Date("2024-03-15"));
-      expect(result.length).toBe(1);
-      expect(result[0].asset_type).toBe("D");
-    });
-  });
-
-  // =========================================================================
-  // getAllocationHistory
-  // =========================================================================
-
-  describe("getAllocationHistory coverage", () => {
-    afterEach(() => jest.restoreAllMocks());
-
-    function mockAllocPost() {
-      jest.spyOn(axios, "create").mockReturnValue({
-        post: jest.fn().mockResolvedValue({
-          status: 200,
-          headers: { "content-type": "application/json" },
-          data: { data: [{ TARIH: 1710000000000, HS: 50 }] },
-        }),
-        get: jest.fn(),
-        defaults: { headers: { common: {} } },
-        interceptors: {
-          request: { use: jest.fn() },
-          response: { use: jest.fn() },
-        },
-      } as unknown as ReturnType<typeof axios.create>);
-    }
-
-    test("clamps date range to max 100 days", async () => {
-      mockAllocPost();
-      const provider = createProvider();
-      const result = await provider.getAllocationHistory({
-        fundCode: "TST",
-        start: new Date("2023-01-01"),
-        end: new Date("2024-06-01"),
-      });
-      expect(result).toBeDefined();
-    });
-
-    test("uses period mapping without start date (1w)", async () => {
-      mockAllocPost();
-      const result = await createProvider().getAllocationHistory({
-        fundCode: "TST",
-        period: "1w",
-      });
-      expect(result).toBeDefined();
-    });
-
-    test("uses period mapping without start date (3mo)", async () => {
-      mockAllocPost();
-      const result = await createProvider().getAllocationHistory({
-        fundCode: "TST",
-        period: "3mo",
-      });
-      expect(result).toBeDefined();
-    });
-
-    test("defaults to 30 days for unknown period", async () => {
-      mockAllocPost();
-      const result = await createProvider().getAllocationHistory({
-        fundCode: "TST",
-        period: "unknown",
-      });
-      expect(result).toBeDefined();
+      ).rejects.toThrow("at most ~3 months");
     });
   });
 

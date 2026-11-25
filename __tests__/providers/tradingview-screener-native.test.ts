@@ -201,6 +201,45 @@ describe("TradingView Screener Native", () => {
         const result = provider.parseCondition("invalid", "1d");
         expect(result).toBeNull();
       });
+
+      test("parses crossover conditions", () => {
+        expect(
+          provider.parseCondition("sma_20 crosses_above sma_50", "1d"),
+        ).toEqual({
+          left: "SMA20",
+          operator: "crosses_above",
+          right: "SMA50",
+        });
+        expect(
+          provider.parseCondition("ema_12 crosses_below ema_26", "1h"),
+        ).toEqual({
+          left: "EMA12|60",
+          operator: "crosses_below",
+          right: "EMA26|60",
+        });
+        expect(provider.parseCondition("macd crosses signal", "1d")).toEqual({
+          left: "MACD.macd",
+          operator: "crosses",
+          right: "MACD.signal",
+        });
+      });
+
+      test("parses percentage conditions (above_pct / below_pct)", () => {
+        expect(
+          provider.parseCondition("close above_pct sma_50 1.05", "1d"),
+        ).toEqual({
+          left: "close",
+          operator: "above_pct",
+          right: ["SMA50", 1.05],
+        });
+        expect(
+          provider.parseCondition("price below_pct bb_upper 0.95", "1d"),
+        ).toEqual({
+          left: "close",
+          operator: "below_pct",
+          right: ["BB.upper", 0.95],
+        });
+      });
     });
 
     describe("extractFields", () => {

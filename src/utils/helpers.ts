@@ -33,8 +33,14 @@ export const TTL = {
   SEARCH: 86400, // 24 hours for search results
   FINANCIAL_STATEMENTS: 86400 * 30, // 30 days
   REALTIME_PRICE: 60, // 1 minute
+  COMPANY_INFO: 3600, // 1 hour for company info & recommendations
   COMPANY_LIST: 86400, // 1 day
   VIOP: 300, // 5 minutes (derivatives data)
+  SOCIAL_DATA: 300, // 5 minutes for Twitter/X social search data
+  EVDS_CATALOG: 86400, // 24 hours for EVDS catalogue
+  EVDS_CATALOGUE: 86400, // Alias for EVDS_CATALOG
+  EVDS_DATA: 300, // 5 minutes for EVDS time-series data
+  EVDS_DASHBOARD: 300, // 5 minutes for EVDS dashboards
 };
 
 /**

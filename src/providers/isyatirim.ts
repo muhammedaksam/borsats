@@ -51,10 +51,14 @@ export class IsYatirimProvider extends BaseProvider {
   private static readonly MAX_PERIODS_PER_CALL = 4;
 
   // Item code prefixes for filtering financial statement types
-  private static readonly ITEM_CODE_PREFIXES: Record<string, string> = {
-    balance_sheet: "1", // Balance sheet items start with 1 or 2
-    income_stmt: "6", // Income statement items start with 6
-    cashflow: "7", // Cash flow items start with 7
+  // The MaliTablo API returns all tables combined; filter by itemCode prefix.
+  private static readonly ITEM_CODE_PREFIXES: Record<
+    string,
+    readonly string[]
+  > = {
+    balance_sheet: ["1", "2"], // 1xxx=Aktif, 2xxx=Pasif
+    income_stmt: ["3"], // 3xxx=Gelir Tablosu
+    cashflow: ["4"], // 4xxx=Nakit Akış
   };
 
   // Known market indices
@@ -251,9 +255,7 @@ export class IsYatirimProvider extends BaseProvider {
   async getFinancialStatements(
     symbol: string,
     statementType:
-      | "balance_sheet"
-      | "income_stmt"
-      | "cashflow" = "balance_sheet",
+      "balance_sheet" | "income_stmt" | "cashflow" = "balance_sheet",
     quarterly: boolean = false,
     financialGroup?: string,
     lastN?: number | string | null,
@@ -624,8 +626,7 @@ export class IsYatirimProvider extends BaseProvider {
 
     const listCacheKey = "isyatirim:screener_list_fallback";
     let allStocks = this.cache.get(listCacheKey) as
-      | ScreenerDataItem[]
-      | undefined;
+      ScreenerDataItem[] | undefined;
 
     if (!allStocks) {
       const url =
@@ -956,6 +957,78 @@ export class IsYatirimProvider extends BaseProvider {
     return records.sort((a, b) => b.date.getTime() - a.date.getTime());
   }
 
+  /**
+   * Get analyst recommendation and target price from İş Yatırım (ONERI / HEDEF_FIYAT / GETIRI_POT).
+   */
+  async getRecommendations(symbol: string): Promise<{
+    recommendation: string | null;
+    target_price: number | null;
+    upside_potential: number | null;
+  }> {
+    const cleanSymbol = symbol
+      .toUpperCase()
+      .replace(".IS", "")
+      .replace(".E", "");
+    const cacheKey = `isyatirim:recommendations:${cleanSymbol}`;
+    const cached = this.cache.get(cacheKey) as
+      | {
+          recommendation: string | null;
+          target_price: number | null;
+          upside_potential: number | null;
+        }
+      | undefined;
+    if (cached) return cached;
+
+    const empty = {
+      recommendation: null,
+      target_price: null,
+      upside_potential: null,
+    };
+
+    let data: Record<string, unknown>;
+    try {
+      data = await this._fetchSermayeData(cleanSymbol);
+    } catch {
+      return empty;
+    }
+
+    const items = this._parseSermayeResponse(data);
+    const result: {
+      recommendation: string | null;
+      target_price: number | null;
+      upside_potential: number | null;
+    } = { ...empty };
+
+    for (const item of items) {
+      const oneri = item.ONERI;
+      const hedefFiyat = item.HEDEF_FIYAT;
+      const getiriPot = item.GETIRI_POT;
+
+      if (typeof oneri === "string" && oneri.trim()) {
+        result.recommendation = oneri.trim();
+      }
+      if (
+        hedefFiyat !== null &&
+        hedefFiyat !== undefined &&
+        hedefFiyat !== ""
+      ) {
+        const val = Number(hedefFiyat);
+        if (!isNaN(val)) result.target_price = Math.round(val * 100) / 100;
+      }
+      if (getiriPot !== null && getiriPot !== undefined && getiriPot !== "") {
+        const val = Number(getiriPot);
+        if (!isNaN(val)) result.upside_potential = Math.round(val * 100) / 100;
+      }
+
+      if (result.recommendation !== null || result.target_price !== null) {
+        break;
+      }
+    }
+
+    this.cache.set(cacheKey, result, TTL.COMPANY_INFO);
+    return result;
+  }
+
   private _getPeriods(
     currentYear: number,
     quarterly: boolean,
@@ -1054,13 +1127,14 @@ export class IsYatirimProvider extends BaseProvider {
     if (!items || !Array.isArray(items)) return [];
 
     // Filter by itemCode prefix when statementType is specified
-    const prefix = statementType
+    const prefixes = statementType
       ? IsYatirimProvider.ITEM_CODE_PREFIXES[statementType]
       : undefined;
-    if (prefix) {
-      items = items.filter((item) =>
-        String(item.itemCode ?? "").startsWith(prefix),
-      );
+    if (prefixes) {
+      items = items.filter((item) => {
+        const code = String(item.itemCode ?? "");
+        return prefixes.some((prefix) => code.startsWith(prefix));
+      });
       if (items.length === 0) return [];
     }
 
