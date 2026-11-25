@@ -32,7 +32,8 @@ export class DovizcomTahvilProvider extends BaseProvider {
   private _parseFloat(text: string): number | null {
     try {
       const cleaned = text.trim().replace(",", ".").replace("%", "");
-      return parseFloat(cleaned);
+      const value = parseFloat(cleaned);
+      return isNaN(value) ? null : value;
     } catch {
       return null;
     }
@@ -66,8 +67,8 @@ export class DovizcomTahvilProvider extends BaseProvider {
       const html = response.data as string;
       const $ = cheerio.load(html);
 
-      // Find the commodities table
-      const table = $("#commodities");
+      // Find the bonds table (doviz.com migrated from #commodities to #bonds)
+      const table = $("#bonds").length ? $("#bonds") : $("#commodities");
       if (!table.length) {
         throw new DataNotAvailableError("Bond table not found on page");
       }
@@ -77,7 +78,7 @@ export class DovizcomTahvilProvider extends BaseProvider {
         throw new DataNotAvailableError("Bond data not found");
       }
 
-      const bonds: BondData[] = [];
+      const parsedBonds: BondData[] = [];
 
       tbody.find("tr").each((_, row) => {
         try {
@@ -86,13 +87,20 @@ export class DovizcomTahvilProvider extends BaseProvider {
             return;
           }
 
-          // Parse bond name and URL
-          const nameLink = cells.eq(0).find("a.name");
+          // Parse bond name and URL (legacy markup used a.name; current markup uses a)
+          const firstCell = cells.eq(0);
+          const nameLink = firstCell.find("a.name").length
+            ? firstCell.find("a.name")
+            : firstCell.find("a").first();
           if (!nameLink.length) {
             return;
           }
 
-          const name = nameLink.text().trim();
+          const name = (
+            $(row).attr("data-name") ||
+            nameLink.find(".currency-details").text() ||
+            nameLink.text()
+          ).trim();
           const url = nameLink.attr("href") || "";
 
           // Parse current yield
@@ -110,18 +118,27 @@ export class DovizcomTahvilProvider extends BaseProvider {
             name,
             maturity,
             yield: yieldRate,
-            yieldDecimal: yieldRate ? yieldRate / 100 : null,
+            yieldDecimal: yieldRate !== null ? yieldRate / 100 : null,
             change:
-              yieldRate && changePct ? yieldRate * (changePct / 100) : null,
+              yieldRate !== null && changePct !== null
+                ? yieldRate * (changePct / 100)
+                : null,
             changePct,
             url,
           };
 
-          bonds.push(bondData);
+          parsedBonds.push(bondData);
         } catch {
           // Skip malformed rows
         }
       });
+
+      // The updated #bonds table includes international bonds alongside Turkish ones;
+      // filter to Turkish government bonds when country-specific rows are present.
+      const turkishBonds = parsedBonds.filter(
+        (b) => /\/tr-/i.test(b.url) || /türkiye/i.test(b.name),
+      );
+      const bonds = turkishBonds.length > 0 ? turkishBonds : parsedBonds;
 
       if (bonds.length === 0) {
         throw new DataNotAvailableError("No bond data found");

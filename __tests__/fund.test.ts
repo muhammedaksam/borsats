@@ -60,6 +60,7 @@ jest.mock("~/providers/tefas", () => {
 describe("Fund", () => {
   jest.setTimeout(45000);
   let mockProvider: MockTEFAS;
+  let fund: Fund;
 
   beforeEach(() => {
     mockProvider = new MockTEFAS();
@@ -69,9 +70,8 @@ describe("Fund", () => {
     mockProvider.mockProfile = {
       fund_code: "TI1",
     };
+    fund = new Fund("TI1");
   });
-
-  const fund = new Fund("TI1");
 
   const runSafe = async (fn: () => Promise<void>) => {
     try {
@@ -151,14 +151,14 @@ describe("Fund", () => {
       } as Partial<FundDetail>;
       
       const taxCat = await fund.taxCategory;
-      expect(taxCat).toBeDefined();
-      
+      expect(taxCat).toBe("pay_senedi_yogun");
+
       const taxRate = await fund.withholdingTaxRate();
-      expect(typeof taxRate).toBe("number");
-      
+      expect(taxRate).toBe(0);
+
       // Mock managementFees to return array
       jest.spyOn(mockProvider, "getManagementFees").mockResolvedValue([
-        { 
+        {
           fund_code: "TI1",
           applied_fee: 2.0,
           name: "Test",
@@ -166,11 +166,12 @@ describe("Fund", () => {
           founder_code: "TST",
           prospectus_fee: 3.0,
           max_expense_ratio: 4.0,
-          annual_return: null
-        }
+          annual_return: 42.5,
+        },
       ]);
       const fee = await fund.managementFee;
       expect(fee?.applied_fee).toBe(2.0);
+      expect(fee?.annual_return).toBe(42.5);
     });
   });
 });
@@ -371,6 +372,30 @@ describe("Fund Max Coverage", () => {
     const type2 = await fund.fundType;
     expect(type2).toBe("YAT");
   });
+
+  test("Fund detectFundType prefers fund_class from getFundDetail", async () => {
+    mockProvider.mockProfile = {
+      fund_code: "ZPX",
+      fund_class: "BYF",
+    } as Partial<FundDetail>;
+    const histSpy = jest.spyOn(mockProvider, "getHistory");
+
+    const fund = new Fund("ZPX");
+    const type = await fund.fundType;
+    expect(type).toBe("BYF");
+    expect(histSpy).not.toHaveBeenCalled();
+  });
+
+  test("Fund withholdingTaxRate returns null for unknown category", async () => {
+    mockProvider.mockProfile = {
+      fund_code: "UNK",
+      category: "",
+    } as Partial<FundDetail>;
+
+    const fund = new Fund("UNK");
+    expect(await fund.taxCategory).toBeNull();
+    expect(await fund.withholdingTaxRate()).toBeNull();
+  });
 });
 
 describe("Fund module-level exports", () => {
@@ -385,12 +410,46 @@ describe("Fund module-level exports", () => {
     const spy = jest.spyOn(mockProvider, "search");
     await searchFunds("test");
     expect(spy).toHaveBeenCalledWith("test");
+
+    await searchFunds("test", 5);
+    expect(spy).toHaveBeenCalledWith("test", 5);
   });
 
   test("screenFunds delegates to provider", async () => {
     const spy = jest.spyOn(mockProvider, "screenFunds");
     await screenFunds({ minReturn: 10 });
     expect(spy).toHaveBeenCalledWith({ minReturn: 10 });
+  });
+
+  test("compareFunds computes rankings, summary, errors, and caps at 10", async () => {
+    jest.spyOn(mockProvider, "getFundDetail").mockImplementation(async (code) => {
+      if (code === "BAD") {
+        throw new Error("not found");
+      }
+      const num = parseInt(code.replace("F", ""), 10) || 1;
+      return {
+        fund_code: code,
+        return_1y: num * 10,
+        return_ytd: num * 5,
+        fund_size: num * 1000,
+        risk_value: 8 - Math.min(num, 7),
+      } as FundDetail;
+    });
+
+    const result = await compareFunds(["F1", "F2", "BAD"]);
+    expect(result.funds).toHaveLength(2);
+    expect(result.rankings.by_return_1y).toEqual(["F2", "F1"]);
+    expect(result.rankings.by_return_ytd).toEqual(["F2", "F1"]);
+    expect(result.rankings.by_size).toEqual(["F2", "F1"]);
+    expect(result.rankings.by_risk_asc).toEqual(["F2", "F1"]);
+    expect(result.summary.total_size).toBe(3000);
+    expect(result.summary.avg_return_ytd).toBe(7.5);
+    expect(result.errors).toEqual([{ fund_code: "BAD", error: "not found" }]);
+
+    // Cap at 10 funds
+    const twelve = Array.from({ length: 12 }, (_, i) => `F${i + 1}`);
+    const capped = await compareFunds(twelve);
+    expect(capped.funds).toHaveLength(10);
   });
 
   test("compareFunds with all null results returns empty", async () => {
@@ -400,6 +459,7 @@ describe("Fund module-level exports", () => {
     expect(result.funds).toEqual([]);
     expect(result.rankings).toEqual({});
     expect(result.summary).toEqual({});
+    expect(result.errors).toHaveLength(2);
   });
 
   test("managementFees delegates to provider", async () => {

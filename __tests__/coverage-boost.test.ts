@@ -373,13 +373,13 @@ describe("Coverage Boost Tests", () => {
     const tefas = getTEFASProvider();
 
     test("Date formatting helpers", () => {
-      const date = new Date(2023, 0, 1, 12, 0, 0); // Noon to avoid TZ flips
+      const date = new Date(Date.UTC(2023, 0, 1, 12, 0, 0)); // Noon UTC to avoid TZ flips
       const internalTefas = tefas as unknown as {
-        _formatDateTR: (d: Date) => string;
         _formatDateISO: (d: Date) => string;
+        _formatDateCompact: (d: Date) => string;
       };
-      expect(internalTefas._formatDateTR(date)).toBe("01.01.2023");
       expect(internalTefas._formatDateISO(date)).toBe("2023-01-01");
+      expect(internalTefas._formatDateCompact(date)).toBe("20230101");
     });
 
     test(

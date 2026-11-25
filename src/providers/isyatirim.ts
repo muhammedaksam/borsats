@@ -51,10 +51,14 @@ export class IsYatirimProvider extends BaseProvider {
   private static readonly MAX_PERIODS_PER_CALL = 4;
 
   // Item code prefixes for filtering financial statement types
-  private static readonly ITEM_CODE_PREFIXES: Record<string, string> = {
-    balance_sheet: "1", // Balance sheet items start with 1 or 2
-    income_stmt: "6", // Income statement items start with 6
-    cashflow: "7", // Cash flow items start with 7
+  // The MaliTablo API returns all tables combined; filter by itemCode prefix.
+  private static readonly ITEM_CODE_PREFIXES: Record<
+    string,
+    readonly string[]
+  > = {
+    balance_sheet: ["1", "2"], // 1xxx=Aktif, 2xxx=Pasif
+    income_stmt: ["3"], // 3xxx=Gelir Tablosu
+    cashflow: ["4"], // 4xxx=Nakit Akış
   };
 
   // Known market indices
@@ -251,9 +255,7 @@ export class IsYatirimProvider extends BaseProvider {
   async getFinancialStatements(
     symbol: string,
     statementType:
-      | "balance_sheet"
-      | "income_stmt"
-      | "cashflow" = "balance_sheet",
+      "balance_sheet" | "income_stmt" | "cashflow" = "balance_sheet",
     quarterly: boolean = false,
     financialGroup?: string,
     lastN?: number | string | null,
@@ -624,8 +626,7 @@ export class IsYatirimProvider extends BaseProvider {
 
     const listCacheKey = "isyatirim:screener_list_fallback";
     let allStocks = this.cache.get(listCacheKey) as
-      | ScreenerDataItem[]
-      | undefined;
+      ScreenerDataItem[] | undefined;
 
     if (!allStocks) {
       const url =
@@ -1054,13 +1055,14 @@ export class IsYatirimProvider extends BaseProvider {
     if (!items || !Array.isArray(items)) return [];
 
     // Filter by itemCode prefix when statementType is specified
-    const prefix = statementType
+    const prefixes = statementType
       ? IsYatirimProvider.ITEM_CODE_PREFIXES[statementType]
       : undefined;
-    if (prefix) {
-      items = items.filter((item) =>
-        String(item.itemCode ?? "").startsWith(prefix),
-      );
+    if (prefixes) {
+      items = items.filter((item) => {
+        const code = String(item.itemCode ?? "");
+        return prefixes.some((prefix) => code.startsWith(prefix));
+      });
       if (items.length === 0) return [];
     }
 

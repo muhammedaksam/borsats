@@ -4,6 +4,7 @@ import {
   FundDetail,
   FundHistoryItem,
   getTEFASProvider,
+  ScreenFundsOptions,
 } from "~/providers/tefas";
 import { classifyFundTaxCategory, getWithholdingTaxRate } from "~/tax";
 import { TechnicalAnalyzer } from "~/technical";
@@ -27,7 +28,7 @@ export class Fund {
 
   constructor(fundCode: string, fundType: FundType | null = null) {
     this._fundCode = fundCode.toUpperCase();
-    this._fundType = fundType; // Literal type doesn't need toUpperCase(), but it's safe
+    this._fundType = fundType ? (fundType.toUpperCase() as FundType) : null;
   }
 
   get fundCode(): string {
@@ -50,56 +51,56 @@ export class Fund {
       return this._fundType || this._detectedFundType!;
     }
 
+    // Prefer fund_class from TEFAS v2 getFundDetail (aligned with borsapy v0.9.0+)
+    try {
+      const detail = await getTEFASProvider().getFundDetail(this._fundCode);
+      if (detail) {
+        this._infoCache = detail;
+        if (detail.fund_class) {
+          this._detectedFundType = detail.fund_class;
+          return detail.fund_class;
+        }
+      }
+    } catch {
+      // Fall through to history probe
+    }
+
+    // Fallback probe (for custom/mocked providers without fund_class)
     const endDt = new Date();
     const startDt = new Date(endDt.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    // Try YAT first
-    try {
-      const df = await getTEFASProvider().getHistory({
-        fundCode: this._fundCode,
-        start: startDt,
-        end: endDt,
-        fundType: "YAT",
-      });
-      if (df.length > 0) {
-        this._detectedFundType = "YAT";
-        return "YAT";
+    for (const candidate of ["YAT", "EMK"] as const) {
+      try {
+        const df = await getTEFASProvider().getHistory({
+          fundCode: this._fundCode,
+          start: startDt,
+          end: endDt,
+          fundType: candidate,
+        });
+        if (df.length > 0) {
+          this._detectedFundType = candidate;
+          return candidate;
+        }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
     }
 
-    // Try EMK
-    try {
-      const df = await getTEFASProvider().getHistory({
-        fundCode: this._fundCode,
-        start: startDt,
-        end: endDt,
-        fundType: "EMK",
-      });
-      if (df.length > 0) {
-        this._detectedFundType = "EMK";
-        return "EMK";
-      }
-    } catch {
-      // ignore
-    }
-
-    // Default to YAT
     this._detectedFundType = "YAT";
     return "YAT";
   }
 
   get info(): Promise<FundDetail> {
     if (this._infoCache) return Promise.resolve(this._infoCache);
-    return this.fundType.then((type) =>
-      getTEFASProvider()
-        .getFundDetail(this._fundCode, type)
-        .then((data: FundDetail) => {
-          this._infoCache = data;
-          return data;
-        }),
-    );
+    return getTEFASProvider()
+      .getFundDetail(this._fundCode, this._fundType || "YAT")
+      .then((data: FundDetail) => {
+        this._infoCache = data;
+        if (!this._fundType && !this._detectedFundType && data.fund_class) {
+          this._detectedFundType = data.fund_class;
+        }
+        return data;
+      });
   }
 
   get detail(): Promise<FundDetail> {
@@ -131,7 +132,7 @@ export class Fund {
   }
 
   /**
-   * Get historical allocation data
+   * Get historical portfolio allocation data (backed by `dagilimSiraliGetirT`).
    */
   async allocationHistory(
     options: {
@@ -169,7 +170,7 @@ export class Fund {
     });
   }
 
-  async technicals(period: string = "1yr"): Promise<TechnicalAnalyzer> {
+  async technicals(period: string = "1y"): Promise<TechnicalAnalyzer> {
     const hist = await this.history({ period });
     // Map Fund history to OHLCV (open=close)
     const ohlcv: OHLCVData[] = hist.map((h: FundHistoryItem) => ({
@@ -213,18 +214,29 @@ export class Fund {
     const years = tradingDays / annualizationFactor;
     const annualizedReturn = ((1 + totalReturn) ** (1 / years) - 1) * 100;
 
-    // Standard deviation
+    // Sample standard deviation (ddof=1, matching pandas .std())
     const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+    const denom = returns.length > 1 ? returns.length - 1 : 1;
     const variance =
-      returns.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / returns.length;
+      returns.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / denom;
     const stdDev = Math.sqrt(variance);
     const annualizedVolatility = stdDev * Math.sqrt(annualizationFactor) * 100;
 
-    // Risk free rate
-    let rf = rfRate;
-    if (rf === undefined) {
-      const rfVal = (await riskFreeRate()) || 28.0;
-      rf = rfVal;
+    // Risk free rate (percentage). Accepts decimal (e.g. 0.28) or percentage (e.g. 28).
+    let rf: number;
+    if (rfRate === undefined) {
+      try {
+        const rfVal = await riskFreeRate();
+        if (rfVal !== null && rfVal !== undefined && !isNaN(rfVal)) {
+          rf = rfVal <= 1 ? rfVal * 100 : rfVal;
+        } else {
+          rf = 30.0;
+        }
+      } catch {
+        rf = 30.0;
+      }
+    } else {
+      rf = rfRate > 0 && rfRate <= 1 ? rfRate * 100 : rfRate;
     }
 
     // Sharpe
@@ -239,9 +251,11 @@ export class Fund {
     if (negativeReturns.length > 0) {
       const downMean =
         negativeReturns.reduce((a, b) => a + b, 0) / negativeReturns.length;
+      const downDenom =
+        negativeReturns.length > 1 ? negativeReturns.length - 1 : 1;
       const downVar =
         negativeReturns.reduce((a, b) => a + Math.pow(b - downMean, 2), 0) /
-        negativeReturns.length;
+        downDenom;
       const downStd = Math.sqrt(downVar);
 
       const annualizedDownStd = downStd * Math.sqrt(annualizationFactor) * 100;
@@ -285,6 +299,7 @@ export class Fund {
     applied_fee: number | null;
     prospectus_fee: number | null;
     max_expense_ratio: number | null;
+    annual_return: number | null;
   } | null> {
     return this.fundType.then((type) =>
       getTEFASProvider()
@@ -298,6 +313,7 @@ export class Fund {
             applied_fee: match.applied_fee,
             prospectus_fee: match.prospectus_fee,
             max_expense_ratio: match.max_expense_ratio,
+            annual_return: match.annual_return,
           };
         })
         .catch(() => null),
@@ -307,27 +323,34 @@ export class Fund {
   /**
    * Get tax category for this fund
    */
-  get taxCategory(): Promise<string> {
+  get taxCategory(): Promise<string | null> {
     return this.info.then((info) => {
       return classifyFundTaxCategory(info.category || "", info.name);
     });
   }
 
   /**
-   * Get withholding tax rate for this fund
+   * Get withholding tax rate for this fund (as decimal, e.g. 0.175 for 17.5%)
    */
   async withholdingTaxRate(
-    purchaseDate?: Date,
+    purchaseDate?: Date | string,
     holdingDays?: number,
-  ): Promise<number> {
+  ): Promise<number | null> {
     const info = await this.info;
     const taxCat = classifyFundTaxCategory(info.category || "", info.name);
-    return getWithholdingTaxRate(taxCat, purchaseDate, holdingDays);
+    if (taxCat === null) return null;
+    return getWithholdingTaxRate(
+      taxCat,
+      purchaseDate ?? new Date(),
+      holdingDays,
+    );
   }
 }
 
-export function searchFunds(query: string) {
-  return getTEFASProvider().search(query);
+export function searchFunds(query: string, limit?: number) {
+  return limit !== undefined
+    ? getTEFASProvider().search(query, limit)
+    : getTEFASProvider().search(query);
 }
 
 /**
@@ -340,25 +363,19 @@ export function managementFees(
   return getTEFASProvider().getManagementFees(fundType, founder);
 }
 
-export function screenFunds(options: Record<string, unknown>) {
-  return getTEFASProvider().screenFunds(options);
+export function screenFunds(
+  options: ScreenFundsOptions | Record<string, unknown> = {},
+) {
+  return getTEFASProvider().screenFunds(options as ScreenFundsOptions);
 }
 
 export async function compareFunds(fundCodes: string[]): Promise<{
   funds: FundDetail[];
   rankings: Record<string, string[]>;
-  summary: Record<string, string | number>;
+  summary: Record<string, string | number | null>;
+  errors?: Array<{ fund_code: string; error: string }>;
 }> {
-  // Fetch details for all funds
-  const promises = fundCodes.map((code) =>
-    new Fund(code).info.catch(() => null),
-  );
-  const results = await Promise.all(promises);
-
-  // Filter out failed
-  const funds = results.filter((f) => f !== null) as FundDetail[];
-
-  if (funds.length === 0) {
+  if (!fundCodes || fundCodes.length === 0) {
     return {
       funds: [],
       rankings: {},
@@ -366,38 +383,107 @@ export async function compareFunds(fundCodes: string[]): Promise<{
     };
   }
 
+  // Cap at 10 funds (matching borsapy)
+  const limitedCodes = fundCodes.slice(0, 10).map((c) => c.toUpperCase());
+  const errors: Array<{ fund_code: string; error: string }> = [];
+
+  const promises = limitedCodes.map((code) =>
+    new Fund(code).info.catch((err: unknown) => {
+      errors.push({
+        fund_code: code,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    }),
+  );
+  const results = await Promise.all(promises);
+
+  const funds = results.filter((f): f is FundDetail => f !== null);
+
+  if (funds.length === 0) {
+    const empty: {
+      funds: FundDetail[];
+      rankings: Record<string, string[]>;
+      summary: Record<string, string | number | null>;
+      errors?: Array<{ fund_code: string; error: string }>;
+    } = {
+      funds: [],
+      rankings: {},
+      summary: {},
+    };
+    if (errors.length > 0) {
+      empty.errors = errors;
+    }
+    return empty;
+  }
+
   // Rankings
   const byReturn1y = [...funds]
-    .sort((a, b) => (b.return_1y || 0) - (a.return_1y || 0))
+    .filter((f) => f.return_1y !== undefined && f.return_1y !== null)
+    .sort((a, b) => (b.return_1y as number) - (a.return_1y as number))
     .map((f) => f.fund_code);
   const byReturnYtd = [...funds]
-    .sort((a, b) => (b.return_ytd || 0) - (a.return_ytd || 0))
+    .filter((f) => f.return_ytd !== undefined && f.return_ytd !== null)
+    .sort((a, b) => (b.return_ytd as number) - (a.return_ytd as number))
     .map((f) => f.fund_code);
   const bySize = [...funds]
+    .filter((f) => f.fund_size !== undefined && f.fund_size !== null)
     .sort((a, b) => (b.fund_size || 0) - (a.fund_size || 0))
+    .map((f) => f.fund_code);
+  const byRiskAsc = [...funds]
+    .filter((f) => f.risk_value !== undefined && f.risk_value !== null)
+    .sort((a, b) => (a.risk_value || 0) - (b.risk_value || 0))
     .map((f) => f.fund_code);
 
   // Summary
   const returns1y = funds
     .map((f) => f.return_1y)
-    .filter((r) => r !== undefined) as number[];
-  const avgReturn1y =
-    returns1y.reduce((a, b) => a + b, 0) / (returns1y.length || 1);
-  const maxReturn1y = Math.max(...returns1y);
-  const minReturn1y = Math.min(...returns1y);
+    .filter((r): r is number => r !== undefined && r !== null);
+  const returnsYtd = funds
+    .map((f) => f.return_ytd)
+    .filter((r): r is number => r !== undefined && r !== null);
+  const sizes = funds
+    .map((f) => f.fund_size)
+    .filter((s): s is number => s !== undefined && s !== null);
 
-  return {
+  const avgReturn1y =
+    returns1y.length > 0
+      ? returns1y.reduce((a, b) => a + b, 0) / returns1y.length
+      : null;
+  const avgReturnYtd =
+    returnsYtd.length > 0
+      ? returnsYtd.reduce((a, b) => a + b, 0) / returnsYtd.length
+      : null;
+  const maxReturn1y = returns1y.length > 0 ? Math.max(...returns1y) : null;
+  const minReturn1y = returns1y.length > 0 ? Math.min(...returns1y) : null;
+  const totalSize = sizes.reduce((a, b) => a + b, 0);
+
+  const out: {
+    funds: FundDetail[];
+    rankings: Record<string, string[]>;
+    summary: Record<string, string | number | null>;
+    errors?: Array<{ fund_code: string; error: string }>;
+  } = {
     funds,
     rankings: {
       by_return_1y: byReturn1y,
       by_return_ytd: byReturnYtd,
       by_size: bySize,
+      by_risk_asc: byRiskAsc,
     },
     summary: {
       fund_count: funds.length,
+      total_size: totalSize,
       avg_return_1y: avgReturn1y,
+      avg_return_ytd: avgReturnYtd,
       best_return_1y: maxReturn1y,
       worst_return_1y: minReturn1y,
     },
   };
+
+  if (errors.length > 0) {
+    out.errors = errors;
+  }
+
+  return out;
 }

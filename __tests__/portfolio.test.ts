@@ -370,6 +370,35 @@ describe("Portfolio Module", () => {
     }
   });
 
+  test("Portfolio rebalance (executed, dryRun=false) updates share counts", async () => {
+    const p = new Portfolio();
+    p.add("THYAO", { shares: 10, cost: 200 }); // 10 * 200 = 2000 (66.67%)
+    p.add("GARAN", { shares: 20, cost: 50 }); // 20 * 50 = 1000 (33.33%)
+
+    const fiSpy = jest
+      .spyOn(Ticker.prototype, "fastInfo", "get")
+      .mockImplementation(function (this: Ticker) {
+        const price = this.symbol === "THYAO" ? 200 : 50;
+        return { lastPrice: Promise.resolve(price) } as unknown as FastInfo;
+      });
+
+    try {
+      p.setTargetWeights({ THYAO: 0.5, GARAN: 0.5 });
+      const result = await p.rebalance(5, false);
+      expect(result.executed).toBe(true);
+      expect(result.plan.length).toBe(2);
+
+      const dict = p.toDict();
+      const thyao = dict.holdings.find((h) => h.symbol === "THYAO");
+      const garan = dict.holdings.find((h) => h.symbol === "GARAN");
+      // Total 3000 -> 50% each = 1500 each -> THYAO: 1500/200 = 8 shares, GARAN: 1500/50 = 30 shares
+      expect(thyao?.shares).toBe(8);
+      expect(garan?.shares).toBe(30);
+    } finally {
+      fiSpy.mockRestore();
+    }
+  });
+
   test("Portfolio rebalancePlan with threshold filtering", async () => {
     const p = new Portfolio();
     p.add("A", { shares: 10, cost: 100 });

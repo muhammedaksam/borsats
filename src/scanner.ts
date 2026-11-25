@@ -1,10 +1,6 @@
 import { getBistIndexProvider } from "~/providers/bist-index";
-import {
-  getScannerProvider,
-  INTERVAL_MAP,
-} from "~/providers/tradingview-scanner";
-import { TechnicalAnalyzer } from "~/technical";
-import { Ticker } from "~/ticker";
+import { INTERVAL_MAP } from "~/providers/tradingview-scanner";
+import { getTVScreenerProvider } from "~/providers/tradingview-screener-native";
 import { Interval, Period } from "~/types";
 
 /**
@@ -196,137 +192,38 @@ export class TechnicalScanner {
   }
 
   /**
-   * Execute the scan and return results
+   * Execute the scan and return results using TradingView's native Screener API
+   * (with parallelized local indicator calculation for Supertrend & Tilson T3).
    */
   async run(limit: number = 100): Promise<ScanResult[]> {
     if (this._symbols.length === 0 || this._conditions.length === 0) {
       return [];
     }
 
-    const provider = getScannerProvider();
-    const results: ScanResult[] = [];
+    const screener = getTVScreenerProvider();
+    try {
+      const rawResults = await screener.scan({
+        symbols: this._symbols,
+        conditions: this._conditions,
+        columns: this._extraColumns.length > 0 ? this._extraColumns : undefined,
+        interval: this._interval,
+        limit,
+      });
 
-    // For each symbol, get TA signals and evaluate conditions
-    const batchSize = 10;
-    for (
-      let i = 0;
-      i < Math.min(this._symbols.length, limit * 2);
-      i += batchSize
-    ) {
-      const batch = this._symbols.slice(i, i + batchSize);
-
-      const batchResults = await Promise.all(
-        batch.map(async (symbol) => {
-          try {
-            const signals = await provider.getTASignals(
-              symbol,
-              "turkey",
-              this._interval,
-            );
-
-            // Extract values for condition evaluation
-            const data: Record<string, unknown> = {
-              symbol,
-              rsi: signals.oscillators.values?.RSI,
-              stoch_k: signals.oscillators.values?.["Stoch.K"],
-              stoch_d: signals.oscillators.values?.["Stoch.D"],
-              cci: signals.oscillators.values?.CCI20,
-              adx: signals.oscillators.values?.ADX,
-              macd: signals.oscillators.values?.MACD_macd,
-              signal: signals.oscillators.values?.MACD_signal,
-              histogram: signals.oscillators.values?.["Rec.MACD"]
-                ? signals.oscillators.values?.MACD_macd! -
-                  signals.oscillators.values?.MACD_signal!
-                : null,
-              close: signals.moving_averages.values?.close,
-              sma_10: signals.moving_averages.values?.SMA10,
-              sma_20: signals.moving_averages.values?.SMA20,
-              sma_30: signals.moving_averages.values?.SMA30,
-              sma_50: signals.moving_averages.values?.SMA50,
-              sma_100: signals.moving_averages.values?.SMA100,
-              sma_200: signals.moving_averages.values?.SMA200,
-              ema_10: signals.moving_averages.values?.EMA10,
-              ema_20: signals.moving_averages.values?.EMA20,
-              ema_30: signals.moving_averages.values?.EMA30,
-              ema_50: signals.moving_averages.values?.EMA50,
-              ema_100: signals.moving_averages.values?.EMA100,
-              ema_200: signals.moving_averages.values?.EMA200,
-              recommendation: signals.summary.recommendation,
-              oscillators_rec: signals.oscillators.recommendation,
-              ma_rec: signals.moving_averages.recommendation,
-            };
-
-            // Local calculations if needed
-            const needsLocal = this._conditions.some((c) =>
-              this._requiresLocalCalc(c),
-            );
-            if (needsLocal) {
-              const history = await new Ticker(symbol).history({
-                interval: this._interval,
-                period: this._getRequiredHistoryLength(),
-              });
-              if (history.length > 0) {
-                const ta = new TechnicalAnalyzer(history);
-                if (this._conditions.some((c) => c.includes("supertrend"))) {
-                  const st = ta.supertrend();
-                  if (st.length > 0) {
-                    data.supertrend = st[st.length - 1].supertrend;
-                    data.supertrend_direction = st[st.length - 1].direction;
-                  }
-                }
-                if (
-                  this._conditions.some(
-                    (c) => c.includes("t3") || c.includes("tillson"),
-                  )
-                ) {
-                  const t3 = ta.tilsonT3();
-                  if (t3.length > 0) {
-                    data.t3 = t3[t3.length - 1];
-                  }
-                }
-              }
-            }
-
-            // Evaluate conditions
-            const conditionsMet: string[] = [];
-            let allMet = true;
-
-            for (const condition of this._conditions) {
-              const met = this._evaluateCondition(condition, data);
-              if (met) {
-                conditionsMet.push(
-                  this._conditionNames.get(condition) || condition,
-                );
-              } else {
-                allMet = false;
-              }
-            }
-
-            if (allMet) {
-              return {
-                symbol,
-                data,
-                conditionsMet,
-                timestamp: new Date(),
-              };
-            }
-            return null;
-          } catch {
-            return null;
-          }
-        }),
+      const conditionLabels = this._conditions.map(
+        (c) => this._conditionNames.get(c) || c,
       );
+      const now = new Date();
 
-      for (const result of batchResults) {
-        if (result) {
-          results.push(result);
-          if (results.length >= limit) break;
-        }
-      }
-      if (results.length >= limit) break;
+      return rawResults.map((row) => ({
+        symbol: row.symbol,
+        data: row as Record<string, unknown>,
+        conditionsMet: [...conditionLabels],
+        timestamp: now,
+      }));
+    } catch {
+      return [];
     }
-
-    return results;
   }
 
   /**

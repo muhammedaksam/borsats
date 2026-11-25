@@ -80,4 +80,16 @@ describe("Library Exports", () => {
   test("should export charts module", () => {
     expect(borsats.calculateHeikinAshi).toBeDefined();
   });
+
+  test("should export borsapy v0.11.0 aligned top-level helpers", () => {
+    expect(borsats.Tickers).toBeDefined();
+    expect(borsats.download).toBeDefined();
+    expect(borsats.setTradingViewAuth).toBeDefined();
+    expect(borsats.getTradingViewAuth).toBeDefined();
+    expect(borsats.clearTradingViewAuth).toBeDefined();
+    expect(borsats.createStream).toBeDefined();
+    expect(borsats.cryptoPairs).toBeDefined();
+    expect(borsats.ASSET_TYPE_LABELS).toBeDefined();
+    expect(borsats.ASSET_NAME_STANDARDIZATION).toBeDefined();
+  });
 });

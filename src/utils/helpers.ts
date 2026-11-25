@@ -35,6 +35,9 @@ export const TTL = {
   REALTIME_PRICE: 60, // 1 minute
   COMPANY_LIST: 86400, // 1 day
   VIOP: 300, // 5 minutes (derivatives data)
+  EVDS_CATALOGUE: 86400, // 24 hours for EVDS catalogue
+  EVDS_DATA: 300, // 5 minutes for EVDS time-series data
+  EVDS_DASHBOARD: 300, // 5 minutes for EVDS dashboards
 };
 
 /**

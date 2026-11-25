@@ -91,10 +91,33 @@ export class FX {
         });
     }
 
-    return this._dovizcom.getCurrent(this._asset).then((d: CurrentData) => {
-      this._currentCache = d;
-      return d;
-    });
+    return this._dovizcom
+      .getCurrent(this._asset)
+      .catch(() => this._currentFromBankRates())
+      .then((d: CurrentData) => {
+        this._currentCache = d;
+        return d;
+      });
+  }
+
+  private async _currentFromBankRates(): Promise<CurrentData> {
+    const rates = await this.bankRates;
+    if (!rates || rates.length === 0) {
+      throw new Error(`No data available for ${this._asset}`);
+    }
+    const mids = rates.map((r) => (r.buy + r.sell) / 2);
+    const avgMid = mids.reduce((a, b) => a + b, 0) / mids.length;
+    const high = Math.max(...rates.map((r) => r.sell));
+    const low = Math.min(...rates.map((r) => r.buy));
+
+    return {
+      symbol: this._asset,
+      last: avgMid,
+      open: avgMid,
+      high,
+      low,
+      updateTime: new Date(),
+    };
   }
 
   get info(): Promise<CurrentData> {
@@ -107,6 +130,20 @@ export class FX {
       if (Array.isArray(res)) return res;
       return [res];
     });
+  }
+
+  /**
+   * Get exchange rate from a specific bank (e.g., "akbank", "garanti", "isbank").
+   */
+  async bankRate(bank: string): Promise<BankRate> {
+    const res = await this._dovizcom.getBankRates(this._asset, bank);
+    if (!Array.isArray(res)) return res;
+    const needle = bank.toLowerCase();
+    const match = res.find((r) => r.bank.toLowerCase() === needle);
+    if (!match) {
+      throw new Error(`Bank ${bank} not found for ${this._asset}`);
+    }
+    return match;
   }
 
   async institutionRates(): Promise<MetalInstitutionRate[]> {
@@ -178,7 +215,24 @@ export class FX {
     const e = endDt || now;
     let s = startDt;
     if (!s) {
-      s = new Date(e.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const periodDays: Record<string, number> = {
+        "1d": 1,
+        "5d": 5,
+        "1w": 7,
+        "1mo": 30,
+        "3mo": 90,
+        "6mo": 180,
+        "1y": 365,
+        "2y": 730,
+        "5y": 1825,
+        max: 3650,
+      };
+      if (period === "ytd") {
+        s = new Date(e.getFullYear(), 0, 1);
+      } else {
+        const days = periodDays[period] ?? 30;
+        s = new Date(e.getTime() - days * 24 * 60 * 60 * 1000);
+      }
     }
 
     // Use TradingView for intraday
@@ -202,6 +256,7 @@ export class FX {
     if (this.isCanliDovizSupported()) {
       return this._canlidoviz.getHistory({
         asset: this._asset,
+        period,
         start: s,
         end: e,
       });

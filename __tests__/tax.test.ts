@@ -1,303 +1,173 @@
 import { getTEFASProvider } from "~/providers/tefas";
 import {
-  TAX_CATEGORIES,
-  TAX_PERIODS,
   classifyFundTaxCategory,
   getWithholdingTaxRate,
+  TAX_CAT_DESCRIPTIONS,
+  TAX_CAT_EQUITY_HEAVY,
+  TAX_CAT_GSYF_GYF_LONG,
+  TAX_CAT_GSYF_GYF_SHORT,
+  TAX_CAT_OTHER,
+  TAX_CAT_VARIABLE,
+  TAX_CATEGORIES,
+  TAX_PERIODS,
   withholdingTaxRate,
   withholdingTaxTable,
 } from "~/tax";
 
 jest.mock("~/providers/tefas");
 
-describe("Tax Module", () => {
-  describe("classifyFundTaxCategory - direct mappings", () => {
-    test("Hisse Senedi Fonu → HISSE_YOĞUN", () => {
-      expect(classifyFundTaxCategory("Hisse Senedi Fonu")).toBe(
-        TAX_CATEGORIES.HISSE_YOĞUN,
+describe("Tax Module (borsapy-aligned)", () => {
+  describe("classifyFundTaxCategory - direct & disambiguated mappings", () => {
+    test("Hisse Senedi Fonu (domestic) → pay_senedi_yogun", () => {
+      expect(classifyFundTaxCategory("Hisse Senedi Fonu", "Ak Portföy BIST 30")).toBe(
+        TAX_CAT_EQUITY_HEAVY,
       );
-    });
-
-    test("Hisse Senedi Yoğun Fon → HISSE_YOĞUN", () => {
       expect(classifyFundTaxCategory("Hisse Senedi Yoğun Fon")).toBe(
-        TAX_CATEGORIES.HISSE_YOĞUN,
+        TAX_CAT_EQUITY_HEAVY,
+      );
+      expect(classifyFundTaxCategory("Hisse Senedi Şemsiye Fonu")).toBe(
+        TAX_CAT_EQUITY_HEAVY,
       );
     });
 
-    test("Esnek Fon → DIGER", () => {
-      expect(classifyFundTaxCategory("Esnek Fon")).toBe(TAX_CATEGORIES.DIGER);
-    });
-
-    test("Dengeli Fon → DIGER", () => {
-      expect(classifyFundTaxCategory("Dengeli Fon")).toBe(TAX_CATEGORIES.DIGER);
-    });
-
-    test("Para Piyasası Fonu → DIGER", () => {
-      expect(classifyFundTaxCategory("Para Piyasası Fonu")).toBe(
-        TAX_CATEGORIES.DIGER,
-      );
-    });
-
-    test("Kısa Vadeli Borçlanma Araçları Fonu → DIGER", () => {
+    test("Hisse Senedi Fonu (foreign / yabancı) → degisken_karma_doviz", () => {
       expect(
-        classifyFundTaxCategory("Kısa Vadeli Borçlanma Araçları Fonu"),
-      ).toBe(TAX_CATEGORIES.DIGER);
+        classifyFundTaxCategory("Hisse Senedi Fonu", "Yapı Kredi Yabancı Teknoloji Fonu"),
+      ).toBe(TAX_CAT_VARIABLE);
+      expect(
+        classifyFundTaxCategory("Hisse Senedi Şemsiye Fonu", "Yabanci Hisse Fonu"),
+      ).toBe(TAX_CAT_VARIABLE);
     });
 
-    test("Altın Fonu → ALTIN_GUMUS", () => {
-      expect(classifyFundTaxCategory("Altın Fonu")).toBe(
-        TAX_CATEGORIES.ALTIN_GUMUS,
+    test("Variable categories → degisken_karma_doviz", () => {
+      for (const cat of [
+        "Değişken Fon",
+        "Karma Fon",
+        "Serbest Fon",
+        "Fon Sepeti Fonu",
+        "Yabancı Fon Sepeti Fonu",
+        "Değişken Şemsiye Fonu",
+        "Dış Borçlanma Araçları Fonu",
+        "Eurobond",
+      ]) {
+        expect(classifyFundTaxCategory(cat)).toBe(TAX_CAT_VARIABLE);
+      }
+    });
+
+    test("Bond / money market / precious metal / participation → borclanma_para_maden", () => {
+      for (const cat of [
+        "Borçlanma Araçları Fonu",
+        "Para Piyasası Fonu",
+        "Kıymetli Madenler Fonu",
+        "Katılım Fonu",
+        "Altın Fonu",
+        "Borçlanma Araçları Şemsiye Fonu",
+        "OKS Standart Fon",
+        "Oks Katılım Standart Fon",
+        "Kısa Vadeli Borçlanma Araçları",
+      ]) {
+        expect(classifyFundTaxCategory(cat)).toBe(TAX_CAT_OTHER);
+      }
+    });
+
+    test("GSYF / GYF → gsyf_gyf_kisa (conservative short-term default)", () => {
+      expect(classifyFundTaxCategory("Gayrimenkul Yatırım Fonları")).toBe(
+        TAX_CAT_GSYF_GYF_SHORT,
       );
-    });
-
-    test("Kıymetli Madenler Fonu → ALTIN_GUMUS", () => {
-      expect(classifyFundTaxCategory("Kıymetli Madenler Fonu")).toBe(
-        TAX_CATEGORIES.ALTIN_GUMUS,
+      expect(classifyFundTaxCategory("Girişim Sermayesi Yatırım Fonları")).toBe(
+        TAX_CAT_GSYF_GYF_SHORT,
       );
-    });
-
-    test("Katılım Fonu → KATILIM", () => {
-      expect(classifyFundTaxCategory("Katılım Fonu")).toBe(
-        TAX_CATEGORIES.KATILIM,
-      );
-    });
-
-    test("Borsa Yatırım Fonu → BYF_DIGER", () => {
-      expect(classifyFundTaxCategory("Borsa Yatırım Fonu")).toBe(
-        TAX_CATEGORIES.BYF_DIGER,
-      );
-    });
-
-    test("Gayrimenkul Yatırım Fonu → GAYRIMENKUL", () => {
       expect(classifyFundTaxCategory("Gayrimenkul Yatırım Fonu")).toBe(
-        TAX_CATEGORIES.GAYRIMENKUL,
+        TAX_CAT_GSYF_GYF_SHORT,
       );
-    });
-
-    test("Girişim Sermayesi Yatırım Fonu → GIRISIM_SERMAYESI", () => {
       expect(classifyFundTaxCategory("Girişim Sermayesi Yatırım Fonu")).toBe(
-        TAX_CATEGORIES.GIRISIM_SERMAYESI,
+        TAX_CAT_GSYF_GYF_SHORT,
       );
     });
 
-    test("Fon Sepeti Fonu → DIGER", () => {
-      expect(classifyFundTaxCategory("Fon Sepeti Fonu")).toBe(
-        TAX_CATEGORIES.DIGER,
+    test("Fallback: döviz in fund name → degisken_karma_doviz", () => {
+      expect(classifyFundTaxCategory("Özel Kategori", "Ak Portföy Döviz Fonu")).toBe(
+        TAX_CAT_VARIABLE,
       );
     });
 
-    test("Serbest Fon → DIGER", () => {
-      expect(classifyFundTaxCategory("Serbest Fon")).toBe(
-        TAX_CATEGORIES.DIGER,
-      );
-    });
-
-    test("Uzun Vadeli Borçlanma Araçları Fonu → DIGER", () => {
-      expect(
-        classifyFundTaxCategory("Uzun Vadeli Borçlanma Araçları Fonu"),
-      ).toBe(TAX_CATEGORIES.DIGER);
-    });
-
-    test("Borçlanma Araçları Fonu → DIGER", () => {
-      expect(classifyFundTaxCategory("Borçlanma Araçları Fonu")).toBe(
-        TAX_CATEGORIES.DIGER,
-      );
+    test("Empty or unknown category returns null", () => {
+      expect(classifyFundTaxCategory("")).toBeNull();
+      expect(classifyFundTaxCategory("Unknown Category", "Unknown Fund")).toBeNull();
     });
   });
 
-  describe("classifyFundTaxCategory - fuzzy category matching", () => {
-    test("hisse endeks fuzzy → HISSE_ENDEKS", () => {
-      expect(classifyFundTaxCategory("Bir Hisse Endeks Fonu")).toBe(
-        TAX_CATEGORIES.HISSE_ENDEKS,
+  describe("getWithholdingTaxRate - 6 Turkish stopaj periods", () => {
+    test("Equity-heavy is always 0.0 across all periods", () => {
+      for (const dt of [
+        "2020-01-01",
+        "2023-06-01",
+        "2024-06-01",
+        "2024-12-01",
+        "2025-06-01",
+        "2025-08-01",
+      ]) {
+        expect(getWithholdingTaxRate(TAX_CATEGORIES.EQUITY_HEAVY, dt)).toBe(0);
+      }
+    });
+
+    test("Variable / Karma / Döviz schedule", () => {
+      expect(getWithholdingTaxRate(TAX_CAT_VARIABLE, "2020-12-22")).toBe(0.1);
+      expect(getWithholdingTaxRate(TAX_CAT_VARIABLE, "2020-12-23")).toBe(0.1);
+      expect(getWithholdingTaxRate(TAX_CAT_VARIABLE, "2024-05-01")).toBe(0.1);
+      expect(getWithholdingTaxRate(TAX_CAT_VARIABLE, "2024-11-01")).toBe(0.1);
+      expect(getWithholdingTaxRate(TAX_CAT_VARIABLE, "2025-02-01")).toBe(0.15);
+      expect(getWithholdingTaxRate(TAX_CAT_VARIABLE, "2025-07-08")).toBe(0.15);
+      expect(getWithholdingTaxRate(TAX_CAT_VARIABLE, "2025-07-09")).toBe(0.175);
+      expect(getWithholdingTaxRate(TAX_CAT_VARIABLE, new Date("2026-01-15"))).toBe(0.175);
+    });
+
+    test("Other (Money Market / Bond / Precious Metals / Participation) schedule", () => {
+      expect(getWithholdingTaxRate(TAX_CAT_OTHER, "2020-12-22")).toBe(0.1);
+      expect(getWithholdingTaxRate(TAX_CAT_OTHER, "2021-06-01")).toBe(0.0);
+      expect(getWithholdingTaxRate(TAX_CAT_OTHER, "2024-04-30")).toBe(0.0);
+      expect(getWithholdingTaxRate(TAX_CAT_OTHER, "2024-05-01")).toBe(0.075);
+      expect(getWithholdingTaxRate(TAX_CAT_OTHER, "2024-10-31")).toBe(0.075);
+      expect(getWithholdingTaxRate(TAX_CAT_OTHER, "2024-11-01")).toBe(0.1);
+      expect(getWithholdingTaxRate(TAX_CAT_OTHER, "2025-01-31")).toBe(0.1);
+      expect(getWithholdingTaxRate(TAX_CAT_OTHER, "2025-02-01")).toBe(0.15);
+      expect(getWithholdingTaxRate(TAX_CAT_OTHER, "2025-07-08")).toBe(0.15);
+      expect(getWithholdingTaxRate(TAX_CAT_OTHER, "2025-07-09")).toBe(0.175);
+    });
+
+    test("GSYF/GYF > 730 days holding overrides to 0.0", () => {
+      expect(getWithholdingTaxRate(TAX_CAT_GSYF_GYF_SHORT, "2025-08-01", 365)).toBe(0.175);
+      expect(getWithholdingTaxRate(TAX_CAT_GSYF_GYF_SHORT, "2025-08-01", 730)).toBe(0.175);
+      expect(getWithholdingTaxRate(TAX_CAT_GSYF_GYF_SHORT, "2025-08-01", 731)).toBe(0.0);
+      expect(getWithholdingTaxRate(TAX_CAT_GSYF_GYF_LONG, "2025-08-01")).toBe(0.0);
+    });
+
+    test("Throws on unknown tax category or invalid date", () => {
+      expect(() => getWithholdingTaxRate("unknown_cat", "2025-08-01")).toThrow(
+        "Unknown tax category",
       );
+      expect(() => getWithholdingTaxRate(TAX_CAT_OTHER, "not-a-date")).toThrow();
     });
 
-    test("hisse (no endeks) fuzzy → HISSE_YOĞUN", () => {
-      expect(classifyFundTaxCategory("Bir Hisse Fonu")).toBe(
-        TAX_CATEGORIES.HISSE_YOĞUN,
-      );
-    });
-
-    test("altın fuzzy → ALTIN_GUMUS", () => {
-      expect(classifyFundTaxCategory("Altın bazlı bir şey")).toBe(
-        TAX_CATEGORIES.ALTIN_GUMUS,
-      );
-    });
-
-    test("gümüş fuzzy → ALTIN_GUMUS", () => {
-      expect(classifyFundTaxCategory("Gümüş bazlı fon")).toBe(
-        TAX_CATEGORIES.ALTIN_GUMUS,
-      );
-    });
-
-    test("kıymetli maden fuzzy → ALTIN_GUMUS", () => {
-      expect(classifyFundTaxCategory("Kıymetli maden fonu")).toBe(
-        TAX_CATEGORIES.ALTIN_GUMUS,
-      );
-    });
-
-    test("döviz fuzzy → DOVIZ", () => {
-      expect(classifyFundTaxCategory("Döviz fonu")).toBe(
-        TAX_CATEGORIES.DOVIZ,
-      );
-    });
-
-    test("katılım fuzzy → KATILIM", () => {
-      expect(classifyFundTaxCategory("Katılım bazlı fon")).toBe(
-        TAX_CATEGORIES.KATILIM,
-      );
-    });
-
-    test("gayrimenkul fuzzy → GAYRIMENKUL", () => {
-      expect(classifyFundTaxCategory("Gayrimenkul fonu")).toBe(
-        TAX_CATEGORIES.GAYRIMENKUL,
-      );
-    });
-
-    test("girişim fuzzy → GIRISIM_SERMAYESI", () => {
-      expect(classifyFundTaxCategory("Girişim sermayesi")).toBe(
-        TAX_CATEGORIES.GIRISIM_SERMAYESI,
-      );
-    });
-  });
-
-  describe("classifyFundTaxCategory - fundName heuristics", () => {
-    test("hisse endeks in fund name → HISSE_ENDEKS", () => {
-      expect(
-        classifyFundTaxCategory("Unknown Category", "ABC Hisse Endeks Fon"),
-      ).toBe(TAX_CATEGORIES.HISSE_ENDEKS);
-    });
-
-    test("hisse (no endeks) in fund name → HISSE_YOĞUN", () => {
-      expect(
-        classifyFundTaxCategory("Unknown Category", "Garanti Hisse"),
-      ).toBe(TAX_CATEGORIES.HISSE_YOĞUN);
-    });
-
-    test("altın in fund name → ALTIN_GUMUS", () => {
-      expect(
-        classifyFundTaxCategory("Unknown Category", "ABC Altın Fonu"),
-      ).toBe(TAX_CATEGORIES.ALTIN_GUMUS);
-    });
-
-    test("kıymetli maden in fund name → ALTIN_GUMUS", () => {
-      expect(
-        classifyFundTaxCategory("Unknown Category", "Kıymetli Maden Fonu"),
-      ).toBe(TAX_CATEGORIES.ALTIN_GUMUS);
-    });
-
-    test("no match anywhere → DIGER", () => {
-      expect(classifyFundTaxCategory("Unknown", "Unknown")).toBe(
-        TAX_CATEGORIES.DIGER,
-      );
-    });
-
-    test("no fundName provided → DIGER", () => {
-      expect(classifyFundTaxCategory("Unknown")).toBe(TAX_CATEGORIES.DIGER);
-    });
-  });
-
-  describe("getWithholdingTaxRate", () => {
-    test("Hisse Yoğun is always 0", () => {
-      expect(getWithholdingTaxRate(TAX_CATEGORIES.HISSE_YOĞUN)).toBe(0);
-    });
-
-    test("Diğer is always 10", () => {
-      expect(getWithholdingTaxRate(TAX_CATEGORIES.DIGER)).toBe(10);
-    });
-
-    test("Altın/Gümüş without date → latest period rate (10)", () => {
-      expect(getWithholdingTaxRate(TAX_CATEGORIES.ALTIN_GUMUS)).toBe(10);
-    });
-
-    test("Altın/Gümüş period 0 (2022-10-01) → 0", () => {
-      expect(
-        getWithholdingTaxRate(
-          TAX_CATEGORIES.ALTIN_GUMUS,
-          new Date("2022-10-01"),
-        ),
-      ).toBe(0);
-    });
-
-    test("Altın/Gümüş period 1 (2022-12-01) → 0", () => {
-      expect(
-        getWithholdingTaxRate(
-          TAX_CATEGORIES.ALTIN_GUMUS,
-          new Date("2022-12-01"),
-        ),
-      ).toBe(0);
-    });
-
-    test("Altın/Gümüş period 2 (2023-07-01) → 10", () => {
-      expect(
-        getWithholdingTaxRate(
-          TAX_CATEGORIES.ALTIN_GUMUS,
-          new Date("2023-07-01"),
-        ),
-      ).toBe(10);
-    });
-
-    test("All zero-rate categories", () => {
-      expect(getWithholdingTaxRate(TAX_CATEGORIES.HISSE_ENDEKS)).toBe(0);
-      expect(getWithholdingTaxRate(TAX_CATEGORIES.GIRISIM_SERMAYESI)).toBe(0);
-      expect(getWithholdingTaxRate(TAX_CATEGORIES.GAYRIMENKUL)).toBe(0);
-      expect(getWithholdingTaxRate(TAX_CATEGORIES.BYF_HISSE)).toBe(0);
-    });
-
-    test("BYF_DIGER is always 10", () => {
-      expect(getWithholdingTaxRate(TAX_CATEGORIES.BYF_DIGER)).toBe(10);
-    });
-
-    test("Döviz period 0 → 0, current → 10", () => {
-      expect(
-        getWithholdingTaxRate(TAX_CATEGORIES.DOVIZ, new Date("2022-08-01")),
-      ).toBe(0);
-      expect(getWithholdingTaxRate(TAX_CATEGORIES.DOVIZ)).toBe(10);
-    });
-
-    test("Katılım period 0 → 0, current → 10", () => {
-      expect(
-        getWithholdingTaxRate(TAX_CATEGORIES.KATILIM, new Date("2022-08-01")),
-      ).toBe(0);
-      expect(getWithholdingTaxRate(TAX_CATEGORIES.KATILIM)).toBe(10);
-    });
-
-    test("Unknown category returns default 10", () => {
-      expect(getWithholdingTaxRate("Some Unknown Category")).toBe(10);
-    });
-
-    test("Date before first period → falls back to latest rate", () => {
-      // Before 2022-07-25, no period matches → returns last rate
-      expect(
-        getWithholdingTaxRate(
-          TAX_CATEGORIES.ALTIN_GUMUS,
-          new Date("2020-01-01"),
-        ),
-      ).toBe(10);
-    });
-
-    test("Reserved holdingDays parameter accepted", () => {
-      // Third param is reserved, should not affect result
-      expect(
-        getWithholdingTaxRate(TAX_CATEGORIES.HISSE_YOĞUN, undefined, 365),
-      ).toBe(0);
+    test("Defaults purchaseDate to today (latest period >= 09.07.2025)", () => {
+      expect(getWithholdingTaxRate(TAX_CAT_OTHER)).toBe(0.175);
     });
   });
 
   describe("withholdingTaxRate (async)", () => {
-    test("Hisse category → 0%", async () => {
+    test("Domestic equity fund → 0", async () => {
       (getTEFASProvider as jest.Mock).mockReturnValue({
         getFundDetail: jest.fn().mockResolvedValue({
           category: "Hisse Senedi Fonu",
-          name: "Test Fon",
+          name: "Test BIST Hisse Fonu",
         }),
       });
 
-      const rate = await withholdingTaxRate("TEST");
+      const rate = await withholdingTaxRate("TEST", "2025-08-01");
       expect(rate).toBe(0);
     });
 
-    test("With purchase date", async () => {
+    test("Gold fund respects purchase date", async () => {
       (getTEFASProvider as jest.Mock).mockReturnValue({
         getFundDetail: jest.fn().mockResolvedValue({
           category: "Altın Fonu",
@@ -305,11 +175,13 @@ describe("Tax Module", () => {
         }),
       });
 
-      const rate = await withholdingTaxRate("GOLD", new Date("2022-10-01"));
-      expect(rate).toBe(0);
+      expect(await withholdingTaxRate("GOLD", "2022-10-01")).toBe(0);
+      expect(await withholdingTaxRate("GOLD", "2024-06-01")).toBe(0.075);
+      expect(await withholdingTaxRate("GOLD", "2025-06-01")).toBe(0.15);
+      expect(await withholdingTaxRate("GOLD", "2025-08-01")).toBe(0.175);
     });
 
-    test("Missing category defaults properly", async () => {
+    test("Unrecognized or missing category returns null", async () => {
       (getTEFASProvider as jest.Mock).mockReturnValue({
         getFundDetail: jest.fn().mockResolvedValue({
           category: "",
@@ -317,36 +189,23 @@ describe("Tax Module", () => {
         }),
       });
 
-      const rate = await withholdingTaxRate("UNK");
-      expect(rate).toBe(10); // DIGER default
-    });
-
-    test("Undefined category handled", async () => {
-      (getTEFASProvider as jest.Mock).mockReturnValue({
-        getFundDetail: jest.fn().mockResolvedValue({
-          name: "Test",
-        }),
-      });
-
-      const rate = await withholdingTaxRate("UNK2");
-      expect(rate).toBe(10);
+      expect(await withholdingTaxRate("UNK")).toBeNull();
     });
   });
 
   describe("withholdingTaxTable", () => {
-    test("returns complete table", () => {
+    test("returns all 5 categories across 6 periods", () => {
       const table = withholdingTaxTable();
-      expect(Array.isArray(table)).toBe(true);
-      expect(table.length).toBe(10); // 10 categories
+      expect(table.length).toBe(5);
+      expect(TAX_PERIODS.length).toBe(6);
 
       for (const entry of table) {
-        expect(entry).toHaveProperty("category");
-        expect(entry).toHaveProperty("periods");
+        expect(entry.tax_category).toBeDefined();
+        expect(entry.description).toBe(TAX_CAT_DESCRIPTIONS[entry.tax_category]);
         expect(entry.periods.length).toBe(TAX_PERIODS.length);
-        for (const period of entry.periods) {
-          expect(period).toHaveProperty("label");
-          expect(period).toHaveProperty("rate");
-          expect(typeof period.rate).toBe("number");
+        for (const p of entry.periods) {
+          expect(typeof p.label).toBe("string");
+          expect(typeof p.rate).toBe("number");
         }
       }
     });

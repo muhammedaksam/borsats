@@ -912,3 +912,10 @@ const CHART_TIMEFRAMES: Record<string, string> = {
   "1w": "1W",
   "1mo": "1M",
 };
+
+/**
+ * Factory helper to create a new TradingViewStream instance (aligned with borsapy's `create_stream`).
+ */
+export function createStream(): TradingViewStream {
+  return new TradingViewStream();
+}

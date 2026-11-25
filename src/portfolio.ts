@@ -815,7 +815,9 @@ export class Portfolio {
 
   /**
    * Execute rebalancing (dry-run by default).
-   * Returns the rebalance plan without actually executing trades.
+   * When `dryRun` is `false`, updates portfolio holding share counts to match
+   * target weights (rounding stock shares to integers, removing zero-target
+   * positions, and adding new positions when needed).
    *
    * @param threshold Minimum drift % to trigger trades (default: 5)
    * @param dryRun If true, just return the plan without modifying portfolio (default: true)
@@ -835,6 +837,66 @@ export class Portfolio {
     executed: boolean;
   }> {
     const plan = await this.rebalancePlan(threshold);
-    return { plan, executed: !dryRun };
+    if (dryRun || plan.length === 0) {
+      return { plan, executed: false };
+    }
+
+    const totalValue = await this.value;
+    if (totalValue <= 0) {
+      return { plan, executed: false };
+    }
+
+    for (const trade of plan) {
+      const existing = this.holdings.get(trade.symbol);
+      const assetType =
+        existing?.assetType || this.detectAssetType(trade.symbol);
+      const price = await this.getAssetPrice(trade.symbol, assetType);
+      if (price <= 0) continue;
+
+      const targetValue = totalValue * trade.targetWeight;
+      let targetShares = targetValue / price;
+      if (assetType === "stock") {
+        targetShares = Math.round(targetShares);
+      } else {
+        targetShares = Math.round(targetShares * 10000) / 10000;
+      }
+
+      if (existing) {
+        if (targetShares <= 0) {
+          this.remove(trade.symbol);
+        } else {
+          existing.shares = targetShares;
+        }
+      } else if (targetShares > 0) {
+        this.add(trade.symbol, {
+          shares: targetShares,
+          cost: price,
+          assetType,
+          purchaseDate: new Date().toISOString().slice(0, 10),
+        });
+      }
+    }
+
+    return { plan, executed: true };
+  }
+
+  private async getAssetPrice(
+    symbol: string,
+    assetType: "stock" | "fx" | "crypto" | "fund",
+  ): Promise<number> {
+    try {
+      if (assetType === "stock") {
+        return (await new Ticker(symbol).fastInfo.lastPrice) || 0;
+      } else if (assetType === "fund") {
+        return (await new Fund(symbol).info).price || 0;
+      } else if (assetType === "fx") {
+        return (await new FX(symbol).current).last || 0;
+      } else if (assetType === "crypto") {
+        return (await new Crypto(symbol).current).last || 0;
+      }
+    } catch {
+      // ignore price fetch errors
+    }
+    return 0;
   }
 }

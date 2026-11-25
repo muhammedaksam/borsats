@@ -132,6 +132,19 @@ describe("FX Coverage", () => {
     expect(Array.isArray(r)).toBe(true);
   });
 
+  test("bankRate returns rate for specific bank", async () => {
+    const fx = new FX("USD");
+    const r = await fx.bankRate("akbank");
+    expect(r.bank).toBe("akbank");
+  });
+
+  test("current falls back to bankRates average when dovizcom getCurrent fails", async () => {
+    mockDovizcomCurrent.mockRejectedValueOnce(new Error("unsupported"));
+    const fx = new FX("PLN");
+    const c = await fx.current;
+    expect(c.last).toBe(34.5);
+  });
+
   test("institutionRates", async () => {
     const fx = new FX("gram-altin");
     const r = await fx.institutionRates();

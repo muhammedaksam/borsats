@@ -33,16 +33,36 @@ export class Crypto {
       });
   }
 
+  get info(): Promise<CurrentData> {
+    return this.current;
+  }
+
   async history(
     options: {
+      period?: string;
       interval?: string;
       start?: Date | string;
       end?: Date | string;
     } = {},
   ): Promise<OHLCVData[]> {
-    const { interval = "1d", start, end } = options;
-    const startDate = start ? new Date(start) : undefined;
+    const { period, interval = "1d", start, end } = options;
     const endDate = end ? new Date(end) : undefined;
+    let startDate = start ? new Date(start) : undefined;
+
+    if (!startDate && period) {
+      const periodDays: Record<string, number> = {
+        "1d": 1,
+        "5d": 5,
+        "1w": 7,
+        "1mo": 30,
+        "3mo": 90,
+        "6mo": 180,
+        "1y": 365,
+      };
+      const days = periodDays[period] ?? 30;
+      const refEnd = endDate || new Date();
+      startDate = new Date(refEnd.getTime() - days * 24 * 60 * 60 * 1000);
+    }
 
     return getBTCTurkProvider().getHistory({
       pair: this._pair,
@@ -101,6 +121,13 @@ export class Crypto {
   }
 }
 
-export function cryptoList() {
-  return getBTCTurkProvider().getPairs();
+export function cryptoPairs(quote: string = "TRY") {
+  return getBTCTurkProvider().getPairs(quote);
+}
+
+/**
+ * Alias for cryptoPairs (retained for backward compatibility)
+ */
+export function cryptoList(quote: string = "TRY") {
+  return cryptoPairs(quote);
 }

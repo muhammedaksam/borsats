@@ -257,4 +257,58 @@ describe("TEFASProvider._postJsonV2", () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect((provider as any).client.post).toHaveBeenCalledTimes(2);
   });
+
+  it("retries HTTP 429 and reports APIError after exhaustion", async () => {
+    const rateLimitResp = mockResponse(
+      "rate limited",
+      "text/plain",
+      429,
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (provider as any).client.post = jest.fn().mockResolvedValue(rateLimitResp);
+
+    await expect(
+      provider._postJsonV2("dagilimSiraliGetirT", {}, "dagilimSiraliGetirT", 2, {
+        rateLimitBackoffMs: 0,
+      }),
+    ).rejects.toThrow("429");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((provider as any).client.post).toHaveBeenCalledTimes(2);
+  });
+
+  it("translates matching errorsAsEmpty into empty array", async () => {
+    const noMatchResp = mockResponse(
+      { errorMessage: "Index 0 out of bounds for length 0", resultList: null },
+      "application/json",
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (provider as any).client.post = jest.fn().mockResolvedValue(noMatchResp);
+
+    const rows = await provider._postJsonV2(
+      "dagilimSiraliGetirT",
+      {},
+      "dagilimSiraliGetirT",
+      3,
+      { errorsAsEmpty: ["Index 0 out of bounds"] },
+    );
+    expect(rows).toEqual([]);
+  });
+
+  it("still throws APIError when errorMessage does not match errorsAsEmpty", async () => {
+    const errResp = mockResponse(
+      {
+        errorMessage: "Geçersiz veri: Tarih aralığı 1 ayı aşamaz",
+        resultList: null,
+      },
+      "application/json",
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (provider as any).client.post = jest.fn().mockResolvedValue(errResp);
+
+    await expect(
+      provider._postJsonV2("dagilimSiraliGetirT", {}, "dagilimSiraliGetirT", 3, {
+        errorsAsEmpty: ["Index 0 out of bounds"],
+      }),
+    ).rejects.toThrow("1 ayı aşamaz");
+  });
 });
